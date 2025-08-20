@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # Ollamaサービス（既にホストで起動している場合はコメントアウト）
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama-server
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   restart: unless-stopped
+
+  # メインの計算化学・ML研究環境
+  research-env:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: computational-chemistry-ml:latest
+    container_name: comp-chem-ml-env
+    hostname: research-env
+    
+    # GPU設定
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # 環境変数
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - OLLAMA_HOST=http://host.docker.internal:11434  # ホストのOllamaを使用
+      - JUPYTER_TOKEN=research2025  # Jupyterのトークン（変更推奨）
+      - PYTHONPATH=/workspace
+      - TZ=Asia/Tokyo
+    
+    # ポートマッピング
+    ports:
+      - "8080:8080"    # Claude-bridge
+      - "8888:8888"    # JupyterLab
+      - "9121:9121"    # Serena-MCP SSE
+      - "9122:9122"    # Serena Dashboard
+    
+    # ボリュームマウント
+    volumes:
+      # 作業ディレクトリ（永続化）
+      - ./workspace:/workspace
+      
+      # 設定ファイル（永続化）
+      - ./config/claude:/root/.claude
+      - ./config/serena:/root/.serena
+      - ./config/claude-bridge:/root/.claude-bridge
+      
+      # データセット用
+      - ./datasets:/datasets
+      
+      # モデル保存用
+      - ./models:/models
+      
+      # ログ
+      - ./logs:/workspace/logs
+      
+      # Jupyterノートブック
+      - ./notebooks:/workspace/notebooks
+      
+      # キャッシュ（高速化のため）
+      - pip_cache:/root/.cache/pip
+      - torch_cache:/root/.cache/torch
+      - huggingface_cache:/root/.cache/huggingface
+    
+    # ネットワーク設定
+    networks:
+      - research-network
+    
+    # セキュリティ設定（必要に応じて調整）
+    security_opt:
+      - seccomp:unconfined
+    
+    # リソース制限（必要に応じて調整）
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '16'
+    #       memory: 64G
+    #     reservations:
+    #       cpus: '8'
+    #       memory: 32G
+    
+    # 再起動ポリシー
+    restart: unless-stopped
+    
+    # ヘルスチェック
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 追加のランタイム設定
+    shm_size: '16gb'  # 共有メモリサイズ（PyTorch用）
+    
+    # コマンド（デフォルトのエントリーポイントを使用）
+    # command: /usr/local/bin/start-environment.sh
+
+# ネットワーク定義
+networks:
+  research-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+# ボリューム定義
+volumes:
+  # ollama_data:
+  pip_cache:
+  torch_cache:
+  huggingface_cache:
