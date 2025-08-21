@@ -42,26 +42,28 @@ check_requirements() {
         exit 1
     fi
     
-    # Docker Compose確認
-    if ! command -v docker-compose &> /dev/null; then
-        log_warning "docker-composeがインストールされていません。Docker Compose V2を試します..."
-        if ! docker compose version &> /dev/null; then
-            log_error "Docker Composeがインストールされていません"
-            exit 1
-        fi
+    # Docker Compose確認（新しいバージョン）
+    if docker compose version &> /dev/null; then
         COMPOSE_CMD="docker compose"
-    else
+        log_success "Docker Compose V2が検出されました"
+    elif command -v docker-compose &> /dev/null; then
         COMPOSE_CMD="docker-compose"
+        log_success "Docker Compose V1が検出されました"
+    else
+        log_error "Docker Composeがインストールされていません"
+        exit 1
     fi
     
     # NVIDIA Docker Runtime確認
-    if ! docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi &> /dev/null; then
+    if ! docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi &> /dev/null 2>&1; then
         log_warning "NVIDIA Docker Runtimeが設定されていない可能性があります"
         read -p "続行しますか？ (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
+    else
+        log_success "NVIDIA Docker Runtime検出"
     fi
     
     log_success "システム要件チェック完了"
@@ -121,6 +123,7 @@ prepare_online() {
         comp-chem-ml-image.tar.gz \
         docker-compose.yml \
         Dockerfile \
+        requirements.txt \
         ollama-models/ \
         python-packages/ \
         *.md \
@@ -153,7 +156,7 @@ deploy_offline() {
     log_info "作業ディレクトリを作成中..."
     mkdir -p workspace/{notebooks,scripts,data}
     mkdir -p config/{claude,serena,claude-bridge}
-    mkdir -p datasets models logs
+    mkdir -p datasets models logs notebooks
     
     # Ollamaのセットアップ（手動）
     log_warning "Ollamaモデルは手動でインポートしてください："
@@ -204,6 +207,9 @@ show_access_info() {
     echo "   Host: $(pwd)/workspace"
     echo "   Container: /workspace"
     echo
+    echo "🔧 CUDA Version: 12.4.1"
+    echo "🐍 PyTorch Version: 2.5.1"
+    echo
     echo "=========================================="
 }
 
@@ -217,7 +223,7 @@ cleanup() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         $COMPOSE_CMD down -v
-        rm -rf workspace config datasets models logs
+        rm -rf workspace config datasets models logs notebooks
         log_success "クリーンアップ完了"
     else
         log_info "クリーンアップをキャンセルしました"
