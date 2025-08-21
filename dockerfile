@@ -1,13 +1,13 @@
-# CUDA 12.1.1 Ubuntu 22.04 ベースイメージ (PyTorchのバージョンと合わせる)
-FROM nvidia/cuda:12.1.1-cudnn-devel-ubuntu22.04
+# CUDA 12.4.1 Ubuntu 22.04 ベースイメージ (利用可能な最新版)
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
 # 環境変数設定
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    CUDA_HOME=/usr/local/cuda-12.1 \
-    PATH=/usr/local/cuda-12.1/bin:$PATH \
-    LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH \
+    CUDA_HOME=/usr/local/cuda-12.4 \
+    PATH=/usr/local/cuda-12.4/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH \
     OLLAMA_HOST=http://host.docker.internal:11434 \
     CLAUDE_BRIDGE_PORT=8080 \
     MCP_SERVER_PORT=9121 \
@@ -73,8 +73,8 @@ RUN git clone https://github.com/patruff/ollama-mcp-bridge.git /opt/ollama-mcp-b
 
 # 設定ファイルの作成
 # Claude-bridge設定
-RUN mkdir -p /root/.claude-bridge
-COPY <<EOF /root/.claude-bridge/config.json
+RUN mkdir -p /root/.claude-bridge && \
+    cat <<EOF > /root/.claude-bridge/config.json
 {
   "ollama": {
     "baseUrl": "http://host.docker.internal:11434",
@@ -93,8 +93,8 @@ COPY <<EOF /root/.claude-bridge/config.json
 EOF
 
 # Serena-MCP設定
-RUN mkdir -p /root/.serena
-COPY <<EOF /root/.serena/serena_config.yml
+RUN mkdir -p /root/.serena && \
+    cat <<EOF > /root/.serena/serena_config.yml
 contexts:
   agent:
     system_prompt: |
@@ -121,8 +121,8 @@ settings:
 EOF
 
 # MCP統合設定
-RUN mkdir -p /root/.config/claude
-COPY <<EOF /root/.config/claude/config.json
+RUN mkdir -p /root/.config/claude && \
+    cat <<EOF > /root/.config/claude/config.json
 {
   "mcpServers": {
     "serena": {
@@ -145,7 +145,7 @@ COPY <<EOF /root/.config/claude/config.json
 EOF
 
 # 起動スクリプトの作成
-COPY <<'SCRIPT' /usr/local/bin/start-environment.sh
+RUN cat <<'SCRIPT' > /usr/local/bin/start-environment.sh
 #!/bin/bash
 set -e
 
