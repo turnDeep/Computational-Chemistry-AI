@@ -6,7 +6,7 @@
 
 - **Claude Code** + **Ollama** 統合によるローカルLLMエージェント
 - **Serena-MCP** によるプログラミング支援
-- **CUDA 13.0** 対応（RTX 5090サポート）
+- **CUDA 12.4** 対応（RTX 5090サポート）
 - **計算化学ライブラリ完備**: RDKit, ASE, MDAnalysis, PySCF等
 - **機械学習フレームワーク**: PyTorch, TensorFlow, scikit-learn等
 - **JupyterLab** 統合開発環境
@@ -15,7 +15,7 @@
 
 - Docker Desktop（WSL2上のUbuntu）
 - NVIDIA Docker Runtime（nvidia-container-toolkit）
-- RTX 5090 + 最新NVIDIAドライバー
+- RTX 5090 + 最新NVIDIAドライバー（CUDA 12.4以上）
 - Ollama（ホスト側で稼働中）
 - 最低64GB RAM推奨
 - 100GB以上の空きディスク容量
@@ -31,14 +31,15 @@ cd computational-research
 # 必要なディレクトリ構造を作成
 mkdir -p workspace/{notebooks,scripts,data}
 mkdir -p config/{claude,serena,claude-bridge}
-mkdir -p datasets models logs
+mkdir -p datasets models logs notebooks
 ```
 
 ### 2. Dockerファイルの配置
 
 このリポジトリの以下のファイルを配置：
-- `Dockerfile`
-- `docker-compose.yml`
+- `Dockerfile`（修正版）
+- `docker-compose.yml`（修正版）
+- `requirements.txt`（修正版）
 
 ### 3. Ollamaモデルの準備（ホスト側）
 
@@ -54,7 +55,7 @@ ollama pull llama3.1:8b
 
 ```bash
 # イメージをビルド
-docker-compose build
+docker compose build
 
 # またはオフライン用にイメージを保存
 docker save computational-chemistry-ml:latest | gzip > comp-chem-ml.tar.gz
@@ -64,10 +65,10 @@ docker save computational-chemistry-ml:latest | gzip > comp-chem-ml.tar.gz
 
 ```bash
 # バックグラウンドで起動
-docker-compose up -d
+docker compose up -d
 
 # ログを確認
-docker-compose logs -f research-env
+docker compose logs -f research-env
 ```
 
 ## 💻 使用方法
@@ -122,9 +123,16 @@ atoms.calc = EMT()
 opt = BFGS(atoms)
 opt.run(fmax=0.05)
 
-# PyTorchでの分子特性予測
+# PyTorchでの分子特性予測（CUDA 12.4対応）
 import torch
 import torch.nn as nn
+
+# GPUが利用可能か確認
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"使用デバイス: {device}")
+if torch.cuda.is_available():
+    print(f"CUDA Version: {torch.version.cuda}")
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
 
 class MolecularNet(nn.Module):
     def __init__(self, input_dim):
@@ -137,6 +145,8 @@ class MolecularNet(nn.Module):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         return self.fc3(x)
+
+model = MolecularNet(100).to(device)
 ```
 
 ## 📦 含まれるライブラリ
@@ -150,7 +160,7 @@ class MolecularNet(nn.Module):
 - **PyMOL** - 分子可視化
 
 ### 機械学習
-- **PyTorch** - 深層学習（CUDA対応）
+- **PyTorch 2.5.1** - 深層学習（CUDA 12.4対応）
 - **TensorFlow** - 機械学習フレームワーク
 - **scikit-learn** - 古典的機械学習
 - **XGBoost/LightGBM/CatBoost** - 勾配ブースティング
@@ -191,6 +201,7 @@ pip install additional-package
 # コンテナ内で確認
 nvidia-smi
 python -c "import torch; print(torch.cuda.is_available())"
+python -c "import torch; print(torch.version.cuda)"
 ```
 
 ### Ollamaに接続できない場合
@@ -252,9 +263,16 @@ result = df.groupby('category').mean().compute()
 ## 🤝 サポート
 
 問題が発生した場合は、以下を確認：
-1. Dockerログ: `docker-compose logs research-env`
+1. Dockerログ: `docker compose logs research-env`
 2. システムリソース: `docker stats`
 3. GPU状態: `nvidia-smi`
+
+## 🔄 バージョン情報
+
+- **CUDA**: 12.4.1
+- **cuDNN**: 9.x (CUDA 12.4に含まれる)
+- **PyTorch**: 2.5.1 (CUDA 12.4対応)
+- **Ubuntu**: 22.04 LTS
 
 ---
 
