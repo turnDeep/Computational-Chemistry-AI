@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Ollamaサービス（既にホストで起動している場合はコメントアウト）
   # ollama:
