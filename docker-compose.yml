@@ -39,6 +39,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - OLLAMA_HOST=http://host.docker.internal:11434  # ホストのOllamaを使用
+      - OLLAMA_MODEL=gpt-oss-20b  # 追加
       - JUPYTER_TOKEN=research2025  # Jupyterのトークン（変更推奨）
       - PYTHONPATH=/workspace
       - TZ=Asia/Tokyo

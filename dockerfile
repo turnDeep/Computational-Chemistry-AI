@@ -78,7 +78,7 @@ RUN mkdir -p /root/.claude-bridge && \
 {
   "ollama": {
     "baseUrl": "http://host.docker.internal:11434",
-    "model": "qwen2.5-coder:7b-instruct",
+    "model": "__OLLAMA_MODEL_PLACEHOLDER__",
     "timeout": 300000
   },
   "server": {
@@ -164,6 +164,8 @@ fi
 
 # Claude-bridgeの起動
 echo "🌉 Claude-bridgeを起動中..."
+# モデル設定を環境変数から反映
+sed -i "s|__OLLAMA_MODEL_PLACEHOLDER__|${OLLAMA_MODEL:-qwen2.5-coder:7b-instruct}|g" /root/.claude-bridge/config.json
 cd /opt/claude-bridge
 source .venv/bin/activate
 python -m llm_bridge_claude_code &
