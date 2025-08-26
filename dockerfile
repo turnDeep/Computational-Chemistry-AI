@@ -123,7 +123,7 @@ RUN pip install --no-cache-dir \
     biotite==0.39.0 \
     prody==2.4.1 \
     oddt==0.7 \
-    deepchem==2.7.1
+    deepchem==2.8.1
 
 # データ処理とツール
 RUN pip install --no-cache-dir \
