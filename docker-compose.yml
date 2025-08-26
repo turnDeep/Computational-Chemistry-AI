@@ -11,7 +11,6 @@ services:
       dockerfile: Dockerfile
       args:
         - BUILDKIT_INLINE_CACHE=1
-    image: computational-chemistry-ml:rtx50
     container_name: comp-chem-ml-env
     hostname: research-env
     
