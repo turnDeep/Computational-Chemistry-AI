@@ -122,7 +122,7 @@ RUN pip install --no-cache-dir \
     biopython==1.83 \
     biotite==0.39.0 \
     prody==2.4.1 \
-    oddt==0.8 \
+    oddt==0.7 \
     deepchem==2.7.1
 
 # データ処理とツール
