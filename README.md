@@ -17,7 +17,11 @@
 - **Claude Code** + **Ollama** 統合によるローカルLLMエージェント
 - **Serena-MCP** によるプログラミング支援
 - **RTX 50シリーズ最適化済み** PyTorch環境
-- **計算化学ライブラリ完備**: RDKit, ASE, MDAnalysis, PySCF等
+- **GPU加速分子計算**: gpu4pyscf-cuda12x対応
+- **計算化学ライブラリ完備**: RDKit, ASE, MDAnalysis, PySCF, gpu4pyscf等
+- **分子構造最適化**: geomeTRIC統合
+- **PubChemデータベースアクセス**: PubChemPy内蔵
+- **3D分子可視化**: py3Dmol対応
 - **機械学習フレームワーク**: PyTorch (Nightly), TensorFlow, scikit-learn等
 - **JupyterLab** 統合開発環境
 
@@ -111,6 +115,18 @@ docker exec comp-chem-ml-env python3 /usr/local/bin/verify-gpu.py
 # ✅ GPU演算テスト成功!
 ```
 
+### 8. 分子計算環境テスト
+
+```bash
+# GPU加速分子計算のテスト
+docker exec comp-chem-ml-env python3 /usr/local/bin/test-gpu-chemistry.py
+
+# 期待される出力：
+# ✅ gpu4pyscf インストール済み - GPU加速利用可能
+# ✅ アスピリン: 分子量=180.16, LogP=1.19
+# ✅ PubChem CID: 2244
+```
+
 ## 💻 使用方法
 
 ### JupyterLabへのアクセス
@@ -142,21 +158,59 @@ z = torch.matmul(x, y)
 print(f"演算成功！結果の形状: {z.shape}")
 ```
 
-### 計算化学ワークフロー（RTX 50最適化）
+### GPU加速分子計算（gpu4pyscf使用）
 
 ```python
-# 分子動力学シミュレーション（GPU加速）
-from ase import Atoms
-from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
-from ase.md import VelocityVerlet
-import torch
+# GPU加速量子化学計算
+import gpu4pyscf
+from pyscf import gto
 
-# GPUを使用した力場計算
-device = torch.device('cuda')
-print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+# 分子定義
+mol = gto.Mole()
+mol.atom = '''
+    C  0.0  0.0  0.0
+    O  1.2  0.0  0.0
+    H -0.5  0.9  0.0
+    H -0.5 -0.9  0.0
+'''
+mol.basis = '6-31G(d)'
+mol.build()
 
-# 大規模分子系のシミュレーション
-# RTX 5090の高速メモリバンド幅を活用
+# GPU加速Hartree-Fock計算
+mf = gpu4pyscf.scf.RHF(mol).to_gpu()
+energy = mf.kernel()
+print(f"Total Energy (GPU): {energy:.6f} Hartree")
+
+# 分子構造最適化（geometric使用）
+from pyscf.geomopt.geometric_solver import optimize
+mol_opt = optimize(mf)
+print("最適化完了！")
+```
+
+### PubChemデータ取得と3D可視化
+
+```python
+import pubchempy as pcp
+import py3Dmol
+from rdkit import Chem
+
+# PubChemから分子情報取得
+compounds = pcp.get_compounds('Ibuprofen', 'name')
+if compounds:
+    smiles = compounds[0].isomeric_smiles
+    print(f"SMILES: {smiles}")
+    
+    # RDKitで3D構造生成
+    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.AddHs(mol)
+    Chem.AllChem.EmbedMolecule(mol)
+    
+    # py3Dmolで可視化（Jupyter内）
+    view = py3Dmol.view(width=400, height=400)
+    view.addModel(Chem.MolToMolBlock(mol), 'mol')
+    view.setStyle({'stick': {}})
+    view.zoomTo()
+    view.show()
 ```
 
 ## 🔧 トラブルシューティング
@@ -228,7 +282,16 @@ torch.backends.cudnn.allow_tf32 = True
 - **PyTorch**: Nightly Build (cu128)
 - **CUDA**: 12.8
 - **cuDNN**: 9.x（CUDA 12.8に含まれる）
+- **CuPy**: 13.6.0（GPU加速計算用）
 - **アーキテクチャサポート**: sm_90, sm_120
+
+### 主要計算化学ライブラリ
+- **gpu4pyscf-cuda12x**: 1.4.2（GPU加速量子化学計算）
+- **PySCF**: 2.5.0（量子化学計算）
+- **geometric**: 1.1（分子構造最適化）
+- **RDKit**: 2024.03.1（ケモインフォマティクス）
+- **PubChemPy**: 1.0.4（PubChemデータベースアクセス）
+- **py3Dmol**: 2.5.2（3D分子可視化）
 
 ## 🤝 貢献
 
