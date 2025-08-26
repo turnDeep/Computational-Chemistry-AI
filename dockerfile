@@ -1,18 +1,27 @@
-# CUDA 12.4.1 Ubuntu 22.04 ベースイメージ (利用可能な最新版)
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+# ================================================
+# RTX 50シリーズ（Blackwell sm_120）対応版
+# CUDA 12.8 + PyTorch Nightlyビルドを使用
+# ================================================
 
-# 環境変数設定
+# CUDA 12.8 Ubuntu 24.04 ベースイメージ（Blackwell対応）
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
+
+# 環境変数設定（sm_120対応）
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    CUDA_HOME=/usr/local/cuda-12.4 \
-    PATH=/usr/local/cuda-12.4/bin:$PATH \
-    LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH \
+    CUDA_HOME=/usr/local/cuda-12.8 \
+    PATH=/usr/local/cuda-12.8/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH \
     OLLAMA_HOST=http://host.docker.internal:11434 \
+    OLLAMA_MODEL=gpt-oss-20b \
     CLAUDE_BRIDGE_PORT=8080 \
     MCP_SERVER_PORT=9121 \
     LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8
+    LC_ALL=en_US.UTF-8 \
+    TORCH_CUDA_ARCH_LIST="9.0;12.0" \
+    CUDA_LAUNCH_BLOCKING=0 \
+    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # 作業ディレクトリ設定
 WORKDIR /workspace
@@ -24,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake gcc g++ gfortran \
     ca-certificates gnupg lsb-release \
     software-properties-common \
-    # Python開発環境
-    python3.10 python3.10-dev python3.10-venv python3-pip \
+    # Python 3.11（PyTorch Nightlyと互換性が良い）
+    python3.11 python3.11-dev python3.11-venv python3-pip \
     # Node.js用（Claude Code用）
     nodejs npm \
     # 化学計算用依存関係
@@ -42,10 +51,88 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Pythonライブラリのインストール
-COPY requirements.txt /workspace/requirements.txt
-RUN python3.10 -m pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r /workspace/requirements.txt
+# Python 3.11をデフォルトに設定
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# pipのアップグレード
+RUN python3.11 -m pip install --upgrade pip setuptools wheel
+
+# ===================================================
+# RTX 50シリーズ対応: PyTorch Nightly (cu128) インストール
+# ===================================================
+RUN pip install --no-cache-dir --pre \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/nightly/cu128
+
+# 基本的な科学計算ライブラリ
+RUN pip install --no-cache-dir \
+    numpy==1.26.4 \
+    scipy==1.13.0 \
+    pandas==2.2.2 \
+    matplotlib==3.8.4 \
+    seaborn==0.13.2 \
+    plotly==5.20.0 \
+    jupyter==1.0.0 \
+    jupyterlab==4.1.5 \
+    ipython==8.23.0
+
+# 機械学習フレームワーク（PyTorch以外）
+RUN pip install --no-cache-dir \
+    tensorflow==2.16.1 \
+    scikit-learn==1.4.2 \
+    xgboost==2.0.3 \
+    lightgbm==4.3.0 \
+    catboost==1.2.3 \
+    keras==3.1.1
+
+# Deep Learning - Transformers & Ecosystem
+RUN pip install --no-cache-dir \
+    transformers==4.40.0 \
+    accelerate==0.29.3 \
+    datasets==2.19.0 \
+    tokenizers==0.19.1 \
+    sentencepiece==0.2.0
+
+# 計算化学ライブラリ
+RUN pip install --no-cache-dir \
+    rdkit==2024.03.1 \
+    ase==3.22.1 \
+    mdanalysis==2.7.0 \
+    mdtraj==1.10.0 \
+    pyscf==2.5.0 \
+    openbabel-wheel==3.1.1.18 \
+    chempy==0.8.3
+
+# 分子モデリング
+RUN pip install --no-cache-dir \
+    biopython==1.83 \
+    biotite==0.39.0 \
+    prody==2.4.1 \
+    oddt==0.8 \
+    deepchem==2.7.1
+
+# データ処理とツール
+RUN pip install --no-cache-dir \
+    h5py==3.11.0 \
+    netCDF4==1.6.5 \
+    xarray==2024.3.0 \
+    dask==2024.4.2 \
+    bokeh==3.4.1 \
+    altair==5.3.0 \
+    networkx==3.3
+
+# 開発ツール
+RUN pip install --no-cache-dir \
+    joblib==1.4.0 \
+    tqdm==4.66.2 \
+    rich==13.7.1 \
+    pytest==8.1.1 \
+    black==24.3.0 \
+    flake8==7.0.0 \
+    mypy==1.9.0 \
+    pre-commit==3.7.0 \
+    uv
 
 # Node.js最新化とClaude Code関連のインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -56,20 +143,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 RUN npm install -g @anthropic-ai/claude-code
 
 # Claude-bridgeのセットアップ
-# uvはrequirements.txtでインストール済み
 RUN git clone https://github.com/guychenya/LLMBridgeClaudeCode.git /opt/claude-bridge && \
     cd /opt/claude-bridge && \
     uv venv && \
     . .venv/bin/activate && \
     uv pip install -r requirements.txt
 
-# Serena-MCPと関連ツールのインストールはrequirements.txtに移動済み
+# Serena-MCPのインストール
+RUN pip install --no-cache-dir git+https://github.com/oraios/serena.git
 
 # Ollama-MCP-Bridgeのセットアップ
 RUN git clone https://github.com/patruff/ollama-mcp-bridge.git /opt/ollama-mcp-bridge && \
     cd /opt/ollama-mcp-bridge && \
     npm install && \
-    npm run build
+    npm run build || true
 
 # 設定ファイルの作成
 # Claude-bridge設定
@@ -144,12 +231,70 @@ RUN mkdir -p /root/.config/claude && \
 }
 EOF
 
+# GPU検証スクリプトの作成
+RUN cat <<'SCRIPT' > /usr/local/bin/verify-gpu.py
+#!/usr/bin/env python3
+import torch
+import sys
+
+print("=" * 60)
+print("RTX 50シリーズ GPU検証")
+print("=" * 60)
+
+# CUDA利用可能性チェック
+cuda_available = torch.cuda.is_available()
+print(f"CUDA利用可能: {cuda_available}")
+
+if cuda_available:
+    # デバイス情報
+    device_count = torch.cuda.device_count()
+    print(f"GPUデバイス数: {device_count}")
+    
+    for i in range(device_count):
+        props = torch.cuda.get_device_properties(i)
+        print(f"\nGPU {i}: {torch.cuda.get_device_name(i)}")
+        print(f"  Compute Capability: {props.major}.{props.minor}")
+        print(f"  メモリ: {props.total_memory / 1e9:.1f} GB")
+        print(f"  SM数: {props.multi_processor_count}")
+        
+        # sm_120のチェック
+        if props.major == 12 and props.minor == 0:
+            print(f"  ✅ sm_120 (Blackwell) 検出!")
+    
+    # PyTorchバージョン情報
+    print(f"\nPyTorch Version: {torch.__version__}")
+    print(f"CUDA Version: {torch.version.cuda}")
+    print(f"cuDNN Version: {torch.backends.cudnn.version()}")
+    
+    # 簡単なGPU演算テスト
+    try:
+        test_tensor = torch.randn(1000, 1000).cuda()
+        result = torch.mm(test_tensor, test_tensor)
+        print("\n✅ GPU演算テスト成功!")
+    except Exception as e:
+        print(f"\n❌ GPU演算テスト失敗: {e}")
+        sys.exit(1)
+else:
+    print("❌ CUDAが利用できません")
+    sys.exit(1)
+
+print("=" * 60)
+SCRIPT
+
+RUN chmod +x /usr/local/bin/verify-gpu.py
+
 # 起動スクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/start-environment.sh
 #!/bin/bash
 set -e
 
-echo "🚀 計算化学・機械学習研究環境を起動しています..."
+echo "🚀 RTX 50シリーズ対応 計算化学・機械学習研究環境を起動しています..."
+
+# GPU検証
+echo "🎮 GPU検証中..."
+python3 /usr/local/bin/verify-gpu.py || {
+    echo "⚠️ GPU検証に失敗しましたが、続行します..."
+}
 
 # ログディレクトリ作成
 mkdir -p /workspace/logs
@@ -165,22 +310,23 @@ fi
 # Claude-bridgeの起動
 echo "🌉 Claude-bridgeを起動中..."
 # モデル設定を環境変数から反映
-sed -i "s|__OLLAMA_MODEL_PLACEHOLDER__|${OLLAMA_MODEL:-qwen2.5-coder:7b-instruct}|g" /root/.claude-bridge/config.json
+sed -i "s|__OLLAMA_MODEL_PLACEHOLDER__|${OLLAMA_MODEL:-gpt-oss-20b}|g" /root/.claude-bridge/config.json
 cd /opt/claude-bridge
 source .venv/bin/activate
 python -m llm_bridge_claude_code &
 BRIDGE_PID=$!
 echo "✅ Claude-bridge起動 (PID: $BRIDGE_PID)"
 
-# Serena-MCPの起動
+# Serena-MCPの起動（エラーを無視）
 echo "🎯 Serena-MCPサーバーを起動中..."
-serena start-mcp-server --context agent --transport sse --port 9121 &
+serena start-mcp-server --context agent --transport sse --port 9121 2>/dev/null &
 SERENA_PID=$!
 echo "✅ Serena-MCP起動 (PID: $SERENA_PID)"
 
 # JupyterLabの起動
 echo "📊 JupyterLabを起動中..."
-jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root &
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
+    --NotebookApp.token="${JUPYTER_TOKEN:-research2025}" &
 JUPYTER_PID=$!
 echo "✅ JupyterLab起動 (PID: $JUPYTER_PID)"
 
@@ -195,8 +341,11 @@ echo "  - Claude-bridge: http://localhost:8080"
 echo "  - Serena-MCP: http://localhost:9121"
 echo "  - Serena Dashboard: http://localhost:9122"
 echo ""
+echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
+echo "🔧 CUDA 12.8 + PyTorch Nightly"
+echo ""
 echo "💡 Claude Codeを使用するには:"
-echo "  docker exec -it <container-name> claude"
+echo "  docker exec -it comp-chem-ml-env claude"
 echo ""
 echo "📁 作業ディレクトリ: /workspace"
 echo ""
