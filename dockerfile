@@ -59,7 +59,7 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
     update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
 # pipのアップグレード
-RUN python3.11 -m pip install --upgrade pip setuptools wheel --break-system-packages
+RUN python3.11 -m pip install --upgrade pip
 
 # ===================================================
 # RTX 50シリーズ対応: PyTorch Nightly (cu128) インストール
