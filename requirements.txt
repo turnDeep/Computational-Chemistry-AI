@@ -3,6 +3,10 @@
 # PyTorchはDockerfile内でnightlyビルドをインストール
 # ================================================
 
+# GPU Computing Support (CUDA 12.x)
+cupy-cuda12x==13.6.0  # GPU加速数値計算
+# cutensor-cu12  # Dockerfileでインストール
+
 # Core Scientific Computing
 numpy==1.26.4
 scipy==1.13.0
@@ -35,6 +39,10 @@ ase==3.22.1
 mdanalysis==2.7.0
 mdtraj==1.10.0
 pyscf==2.5.0
+gpu4pyscf-cuda12x==1.4.2  # GPU加速PySCF
+geometric==1.1  # 分子構造最適化
+pubchempy==1.0.4  # PubChemデータベースアクセス
+py3Dmol==2.5.2  # 3D分子可視化
 openbabel-wheel==3.1.1.18
 chempy==0.8.3
 # pymol-open-source==3.0.0  # 別途インストール推奨
