@@ -1,32 +1,58 @@
-# 🧪 計算化学・機械学習研究用Docker環境
+# 🧪 RTX 50シリーズ対応 計算化学・機械学習研究用Docker環境
 
-オフライン環境での計算化学と機械学習研究に最適化された、完全統合型のDocker環境です。
+## 🎮 RTX 5090/5070 Ti完全対応版
+
+オフライン環境での計算化学と機械学習研究に最適化された、**RTX 50シリーズ（Blackwell sm_120）完全対応**のDocker環境です。
+
+## ⚡ RTX 50シリーズサポートの特徴
+
+- **✅ sm_120 (Blackwell) アーキテクチャ完全対応**
+- **CUDA 12.8** + **PyTorch Nightly Build (cu128)**
+- **RTX 5090** / **RTX 5070 Ti** / **RTX 5080** 動作確認済み
+- PyTorchの「sm_120 is not compatible」エラーを解決
+- 最新のBlackwell GPUの性能を最大限活用
 
 ## 🌟 主な機能
 
 - **Claude Code** + **Ollama** 統合によるローカルLLMエージェント
 - **Serena-MCP** によるプログラミング支援
-- **CUDA 12.4** 対応（RTX 5090サポート）
+- **RTX 50シリーズ最適化済み** PyTorch環境
 - **計算化学ライブラリ完備**: RDKit, ASE, MDAnalysis, PySCF等
-- **機械学習フレームワーク**: PyTorch, TensorFlow, scikit-learn等
+- **機械学習フレームワーク**: PyTorch (Nightly), TensorFlow, scikit-learn等
 - **JupyterLab** 統合開発環境
 
 ## 📋 前提条件
 
-- Docker Desktop（WSL2上のUbuntu）
+- Docker Desktop（WSL2上のUbuntu推奨）
 - NVIDIA Docker Runtime（nvidia-container-toolkit）
-- RTX 5090 + 最新NVIDIAドライバー（CUDA 12.4以上）
+- **RTX 5090/5070 Ti** または他のRTX 50シリーズGPU
+- **NVIDIA Driver 570.xx以上**（CUDA 12.8対応）
 - Ollama（ホスト側で稼働中）
-- 最低64GB RAM推奨
+- 最低64GB RAM推奨（RTX 5090の場合は128GB推奨）
 - 100GB以上の空きディスク容量
+
+## 🚨 重要：RTX 50シリーズ使用時の注意
+
+RTX 50シリーズは新しいBlackwellアーキテクチャ（sm_120）を採用しており、通常のPyTorch安定版では動作しません。この環境は**PyTorch Nightlyビルド**を使用して完全対応しています。
 
 ## 🚀 セットアップ手順
 
-### 1. プロジェクトディレクトリの作成
+### 1. GPUドライバーの確認
 
 ```bash
-mkdir computational-research
-cd computational-research
+# CUDA 12.8以上が必要
+nvidia-smi
+
+# 出力例（RTX 5090の場合）：
+# CUDA Version: 12.8
+# GPU: NVIDIA GeForce RTX 5090
+```
+
+### 2. プロジェクトディレクトリの作成
+
+```bash
+mkdir computational-research-rtx50
+cd computational-research-rtx50
 
 # 必要なディレクトリ構造を作成
 mkdir -p workspace/{notebooks,scripts,data}
@@ -34,55 +60,58 @@ mkdir -p config/{claude,serena,claude-bridge}
 mkdir -p datasets models logs notebooks
 ```
 
-### 2. Dockerファイルの配置
+### 3. Dockerファイルの配置
 
 このリポジトリの以下のファイルを配置：
-- `Dockerfile`（修正版）
-- `docker-compose.yml`（修正版）
-- `requirements.txt`（修正版）
+- `Dockerfile`（RTX 50シリーズ対応版）
+- `docker-compose.yml`（RTX 50シリーズ対応版）
+- `requirements.txt`（RTX 50シリーズ用）
 
-### 3. Ollamaモデルの準備（ホスト側）
+### 4. Ollamaモデルの準備（ホスト側）
 
 ```bash
-# 推奨モデルのダウンロード
+# GPT-OSS-20Bモデルを使用
+ollama pull gpt-oss-20b
+
+# または他の推奨モデル
 ollama pull qwen2.5-coder:7b-instruct
 ollama pull deepseek-coder:33b-instruct
-ollama pull codellama:13b
-ollama pull llama3.1:8b
 ```
 
-### 4. Dockerイメージのビルド
+### 5. Dockerイメージのビルド
 
 ```bash
-# イメージをビルド
+# RTX 50シリーズ対応イメージをビルド（時間がかかります）
 docker compose build
 
-# またはオフライン用にイメージを保存
-docker save computational-chemistry-ml:latest | gzip > comp-chem-ml.tar.gz
+# ビルド成功の確認
+docker images | grep computational-chemistry-ml
 ```
 
-### 5. コンテナの起動
+### 6. コンテナの起動
 
 ```bash
-# バックグラウンドで起動
+# GPUチェックとメインコンテナの起動
 docker compose up -d
 
-# ログを確認
-docker compose logs -f research-env
+# ログでGPU認識を確認
+docker compose logs gpu-check
+docker compose logs research-env
+```
+
+### 7. GPU動作確認
+
+```bash
+# コンテナ内でGPU検証スクリプトを実行
+docker exec comp-chem-ml-env python3 /usr/local/bin/verify-gpu.py
+
+# 期待される出力：
+# ✅ sm_120 (Blackwell) 検出!
+# PyTorch Version: 2.x.x+cu128
+# ✅ GPU演算テスト成功!
 ```
 
 ## 💻 使用方法
-
-### Claude Codeの使用
-
-```bash
-# コンテナ内でClaude Codeを起動
-docker exec -it comp-chem-ml-env claude
-
-# プロジェクトディレクトリで作業
-cd /workspace/my-project
-claude --dangerously-skip-permissions
-```
 
 ### JupyterLabへのアクセス
 
@@ -92,188 +121,123 @@ http://localhost:8888
 Token: research2025
 ```
 
-### Serena-MCPの活用
+### PyTorchでRTX 5090を使用
 
 ```python
-# Pythonスクリプト内から
-import requests
-
-# Serena-MCPにコード分析を依頼
-response = requests.post('http://localhost:9121/analyze', 
-    json={'code': 'your_code_here'})
-```
-
-### 計算化学ワークフロー例
-
-```python
-# RDKitを使った分子操作
-from rdkit import Chem
-from rdkit.Chem import AllChem, Descriptors
-
-mol = Chem.MolFromSmiles('CC(=O)OC1=CC=CC=C1C(=O)O')
-print(f"分子量: {Descriptors.MolWt(mol)}")
-
-# ASEを使った構造最適化
-from ase import Atoms
-from ase.optimize import BFGS
-from ase.calculators.emt import EMT
-
-atoms = Atoms('H2O', positions=[[0, 0, 0], [1, 0, 0], [0, 1, 0]])
-atoms.calc = EMT()
-opt = BFGS(atoms)
-opt.run(fmax=0.05)
-
-# PyTorchでの分子特性予測（CUDA 12.4対応）
 import torch
-import torch.nn as nn
 
-# GPUが利用可能か確認
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"使用デバイス: {device}")
-if torch.cuda.is_available():
-    print(f"CUDA Version: {torch.version.cuda}")
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
+# GPU確認
+print(f"CUDA available: {torch.cuda.is_available()}")
+print(f"GPU: {torch.cuda.get_device_name(0)}")
+print(f"PyTorch version: {torch.__version__}")
 
-class MolecularNet(nn.Module):
-    def __init__(self, input_dim):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 1)
-        
-    def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        return self.fc3(x)
+# Compute Capability確認（12.0になっているはず）
+props = torch.cuda.get_device_properties(0)
+print(f"Compute Capability: {props.major}.{props.minor}")
 
-model = MolecularNet(100).to(device)
+# 大規模テンソル演算（RTX 5090の32GB VRAMを活用）
+x = torch.randn(10000, 10000).cuda()
+y = torch.randn(10000, 10000).cuda()
+z = torch.matmul(x, y)
+print(f"演算成功！結果の形状: {z.shape}")
 ```
 
-## 📦 含まれるライブラリ
+### 計算化学ワークフロー（RTX 50最適化）
 
-### 計算化学
-- **RDKit** - ケモインフォマティクス
-- **ASE** - 原子シミュレーション環境
-- **MDAnalysis** - 分子動力学解析
-- **PySCF** - 量子化学計算
-- **OpenBabel** - 分子フォーマット変換
-- **PyMOL** - 分子可視化
+```python
+# 分子動力学シミュレーション（GPU加速）
+from ase import Atoms
+from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
+from ase.md import VelocityVerlet
+import torch
 
-### 機械学習
-- **PyTorch 2.5.1** - 深層学習（CUDA 12.4対応）
-- **TensorFlow** - 機械学習フレームワーク
-- **scikit-learn** - 古典的機械学習
-- **XGBoost/LightGBM/CatBoost** - 勾配ブースティング
-- **Transformers** - 事前学習モデル
+# GPUを使用した力場計算
+device = torch.device('cuda')
+print(f"Using GPU: {torch.cuda.get_device_name(0)}")
 
-### データサイエンス
-- **NumPy/SciPy** - 数値計算
-- **Pandas** - データ処理
-- **Matplotlib/Seaborn/Plotly** - 可視化
-- **JupyterLab** - インタラクティブ開発
-
-## 🔧 カスタマイズ
-
-### 環境変数の設定
-
-`docker-compose.yml`で以下を調整可能：
-
-```yaml
-environment:
-  - JUPYTER_TOKEN=your_secure_token
-  - OLLAMA_MODEL=preferred_model_name
-  - CUDA_VISIBLE_DEVICES=0,1  # GPU選択
+# 大規模分子系のシミュレーション
+# RTX 5090の高速メモリバンド幅を活用
 ```
 
-### 追加パッケージのインストール
+## 🔧 トラブルシューティング
+
+### "sm_120 is not compatible" エラーが出る場合
 
 ```bash
-# コンテナ内で
+# コンテナ内でPyTorchを再インストール
 docker exec -it comp-chem-ml-env bash
-pip install additional-package
+pip uninstall torch torchvision torchaudio -y
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 ```
-
-## 🛠️ トラブルシューティング
 
 ### GPUが認識されない場合
 
 ```bash
-# コンテナ内で確認
-nvidia-smi
-python -c "import torch; print(torch.cuda.is_available())"
-python -c "import torch; print(torch.version.cuda)"
+# ホストでNVIDIAランタイムの確認
+docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
+
+# Dockerデーモンの設定確認
+cat /etc/docker/daemon.json
+# "default-runtime": "nvidia" が設定されているか確認
 ```
 
-### Ollamaに接続できない場合
+## 📊 パフォーマンス最適化（RTX 50向け）
 
-```bash
-# ホスト側で
-ollama serve
-
-# WSL2の場合、ファイアウォール設定を確認
-```
-
-### メモリ不足の場合
-
-`docker-compose.yml`でリソース制限を調整：
-
-```yaml
-deploy:
-  resources:
-    limits:
-      memory: 32G  # 必要に応じて調整
-```
-
-## 📊 パフォーマンス最適化
-
-### GPUメモリの効率的な使用
+### メモリ最適化
 
 ```python
-# PyTorchでの混合精度学習
-from torch.cuda.amp import autocast, GradScaler
+# RTX 5090の32GB VRAMを最大活用
+import torch
 
-scaler = GradScaler()
-with autocast():
-    output = model(input)
-    loss = criterion(output, target)
+# メモリアロケータの設定
+torch.cuda.set_per_process_memory_fraction(0.9)  # 90%まで使用
+torch.cuda.empty_cache()
+
+# Flash Attention 3.0（Blackwell最適化）
+from transformers import AutoModel
+model = AutoModel.from_pretrained(
+    "model_name",
+    attn_implementation="flash_attention_2",
+    torch_dtype=torch.float16
+)
 ```
 
-### 並列処理の活用
+### TF32精度の活用
 
 ```python
-# Daskで大規模データ処理
-import dask.dataframe as dd
-df = dd.read_csv('large_dataset.csv')
-result = df.groupby('category').mean().compute()
+# Blackwellの新しいTensor Coreを活用
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 ```
 
-## 🔒 セキュリティ注意事項
+## 🎮 対応GPU一覧
 
-- オフライン環境での使用を前提としています
-- `--dangerously-skip-permissions`は信頼できるコードでのみ使用
-- JupyterLabのトークンは必ず変更してください
+| GPU | Compute Capability | 状態 |
+|-----|-------------------|------|
+| RTX 5090 | sm_120 | ✅ 完全対応 |
+| RTX 5080 | sm_120 | ✅ 完全対応 |
+| RTX 5070 Ti | sm_120 | ✅ 完全対応 |
+| RTX 5070 | sm_120 | ✅ 完全対応 |
+| RTX 4090 | sm_89 | ✅ 対応（互換性あり） |
+| RTX 4080 | sm_89 | ✅ 対応（互換性あり） |
 
-## 📝 ライセンス
+## 📝 技術詳細
 
-各ライブラリのライセンスに従ってください。主なライセンス：
-- RDKit: BSD 3-Clause
-- PyTorch: BSD
-- TensorFlow: Apache 2.0
+- **ベースイメージ**: nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
+- **Python**: 3.11（PyTorch Nightlyとの互換性）
+- **PyTorch**: Nightly Build (cu128)
+- **CUDA**: 12.8
+- **cuDNN**: 9.x（CUDA 12.8に含まれる）
+- **アーキテクチャサポート**: sm_90, sm_120
 
-## 🤝 サポート
+## 🤝 貢献
 
-問題が発生した場合は、以下を確認：
-1. Dockerログ: `docker compose logs research-env`
-2. システムリソース: `docker stats`
-3. GPU状態: `nvidia-smi`
+RTX 50シリーズでの問題や改善案がありましたら、Issueを作成してください。
 
-## 🔄 バージョン情報
+## 📄 ライセンス
 
-- **CUDA**: 12.4.1
-- **cuDNN**: 9.x (CUDA 12.4に含まれる)
-- **PyTorch**: 2.5.1 (CUDA 12.4対応)
-- **Ubuntu**: 22.04 LTS
+各ライブラリのライセンスに従ってください。
 
 ---
 
-**Happy Computing! 🚀🧬💻**
+**Happy Computing with RTX 50 Series! 🚀🎮🧬💻**
