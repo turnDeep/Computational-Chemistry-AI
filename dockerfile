@@ -144,8 +144,7 @@ RUN pip install --no-cache-dir \
     black==24.3.0 \
     flake8==7.0.0 \
     mypy==1.9.0 \
-    pre-commit==3.7.0 \
-    uv
+    pre-commit==3.7.0
 
 # Node.js最新化とClaude Code関連のインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -155,12 +154,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 # Claude Codeのインストール
 RUN npm install -g @anthropic-ai/claude-code
 
-# Claude-bridgeのセットアップ
-RUN git clone https://github.com/guychenya/LLMBridgeClaudeCode.git /opt/claude-bridge && \
-    cd /opt/claude-bridge && \
-    uv venv && \
-    . .venv/bin/activate && \
-    uv pip install .
+# Claude-bridgeのインストール
+RUN npm install -g @mariozechner/claude-bridge
 
 # Serena-MCPのインストール
 RUN pip install --no-cache-dir git+https://github.com/oraios/serena.git
