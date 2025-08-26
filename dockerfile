@@ -119,11 +119,11 @@ RUN pip install --no-cache-dir \
 
 # 分子モデリング
 RUN pip install --no-cache-dir \
-    biopython==1.83 \
+    biopython==1.79 \
     biotite==0.39.0 \
     prody==2.4.1 \
     oddt==0.7 \
-    deepchem==2.8.1
+    deepchem
 
 # データ処理とツール
 RUN pip install --no-cache-dir \
@@ -160,7 +160,7 @@ RUN git clone https://github.com/guychenya/LLMBridgeClaudeCode.git /opt/claude-b
     cd /opt/claude-bridge && \
     uv venv && \
     . .venv/bin/activate && \
-    uv pip install -r requirements.txt
+    uv pip install .
 
 # Serena-MCPのインストール
 RUN pip install --no-cache-dir git+https://github.com/oraios/serena.git
