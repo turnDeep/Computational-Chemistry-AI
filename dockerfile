@@ -27,12 +27,15 @@ ENV DEBIAN_FRONTEND=noninteractive \
 WORKDIR /workspace
 
 # システムパッケージのインストール
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
     # 基本ツール
     curl wget git vim nano htop tmux screen \
     build-essential cmake gcc g++ gfortran \
     ca-certificates gnupg lsb-release \
-    software-properties-common \
     # Python 3.11（PyTorch Nightlyと互換性が良い）
     python3.11 python3.11-dev python3.11-venv python3-pip \
     # Node.js用（Claude Code用）
@@ -43,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-all-dev libgsl-dev \
     libfftw3-dev libsuitesparse-dev \
     # 分子構造可視化用
-    libgl1-mesa-glx libglu1-mesa \
+    libgl1 libglu1-mesa \
     libxrender1 libxext6 libxi6 \
     # ネットワークツール（デバッグ用）
     iputils-ping net-tools dnsutils \
