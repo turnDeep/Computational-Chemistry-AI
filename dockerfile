@@ -58,9 +58,6 @@ RUN apt-get update && \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
-# pipのアップグレード
-RUN python3.11 -m pip install --upgrade pip
-
 # ===================================================
 # RTX 50シリーズ対応: PyTorch Nightly (cu128) インストール
 # ===================================================
@@ -108,7 +105,7 @@ RUN pip install --no-cache-dir \
     ase==3.22.1 \
     mdanalysis==2.7.0 \
     mdtraj==1.10.0 \
-    pyscf==2.5.0 \
+    pyscf==2.8.0 \
     gpu4pyscf-cuda12x==1.4.2 \
     geometric==1.1 \
     pubchempy==1.0.4 \
