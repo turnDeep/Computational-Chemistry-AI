@@ -1,5 +1,7 @@
-# PyTorch packages - CUDA 12.4用に修正
---index-url https://download.pytorch.org/whl/cu124
+# ================================================
+# RTX 50シリーズ対応版 requirements.txt
+# PyTorchはDockerfile内でnightlyビルドをインストール
+# ================================================
 
 # Core Scientific Computing
 numpy==1.26.4
@@ -12,10 +14,7 @@ jupyter==1.0.0
 jupyterlab==4.1.5
 ipython==8.23.0
 
-# Machine Learning Frameworks - CUDA 12.4対応
-torch==2.5.1
-torchvision==0.20.1
-torchaudio==2.5.1
+# Machine Learning Frameworks (PyTorch以外)
 tensorflow==2.16.1
 scikit-learn==1.4.2
 xgboost==2.0.3
@@ -38,7 +37,7 @@ mdtraj==1.10.0
 pyscf==2.5.0
 openbabel-wheel==3.1.1.18
 chempy==0.8.3
-pymol-open-source==3.0.0
+# pymol-open-source==3.0.0  # 別途インストール推奨
 
 # Molecular Modeling & Drug Discovery
 biopython==1.83
@@ -46,7 +45,7 @@ biotite==0.39.0
 prody==2.4.1
 oddt==0.8
 deepchem==2.7.1
-molecularnodes==4.0.0
+# molecularnodes==4.0.0  # Blender依存のため除外
 
 # Quantum Chemistry & Materials Science
 qiskit==1.0.2
@@ -63,7 +62,7 @@ dask==2024.4.2
 bokeh==3.4.1
 altair==5.3.0
 networkx==3.3
-graph-tool==2.68
+# graph-tool==2.68  # 大きなパッケージのため除外
 
 # Statistics & Optimization
 statsmodels==0.14.2
@@ -77,8 +76,8 @@ ray[tune]==2.10.0
 mlflow==2.12.1
 wandb==0.16.6
 tensorboard==2.16.2
-autogluon==1.1.0
-pycaret==3.3.1
+# autogluon==1.1.0  # 大きなパッケージのため除外
+# pycaret==3.3.1  # 依存関係が複雑なため除外
 
 # Developer Tools & Utilities
 joblib==1.4.0
@@ -91,9 +90,7 @@ mypy==1.9.0
 pre-commit==3.7.0
 uv
 
-# Serena MCP (from Git)
-git+https://github.com/oraios/serena.git
-
-# MCP Server Tools
-mcp-server-sqlite
-duckduckgo-mcp-server
+# 追加の必須ライブラリ
+requests==2.31.0
+pyyaml==6.0.1
+typing-extensions==4.9.0
