@@ -58,6 +58,10 @@ RUN apt-get update && \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
+# Python仮想環境の作成と有効化
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # ===================================================
 # RTX 50シリーズ対応: PyTorch Nightly (cu128) インストール
 # ===================================================
