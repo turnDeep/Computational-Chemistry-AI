@@ -65,6 +65,11 @@ RUN pip install --no-cache-dir --pre \
     torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/nightly/cu128
 
+# CuPy for CUDA 12.x（GPU4PySCF用）
+RUN pip install --no-cache-dir \
+    cupy-cuda12x==13.6.0 \
+    cutensor-cu12
+
 # 基本的な科学計算ライブラリ
 RUN pip install --no-cache-dir \
     numpy==1.26.4 \
@@ -94,13 +99,17 @@ RUN pip install --no-cache-dir \
     tokenizers==0.19.1 \
     sentencepiece==0.2.0
 
-# 計算化学ライブラリ
+# 計算化学ライブラリ（GPU対応版含む）
 RUN pip install --no-cache-dir \
     rdkit==2024.03.1 \
     ase==3.22.1 \
     mdanalysis==2.7.0 \
     mdtraj==1.10.0 \
     pyscf==2.5.0 \
+    gpu4pyscf-cuda12x==1.4.2 \
+    geometric==1.1 \
+    pubchempy==1.0.4 \
+    py3Dmol==2.5.2 \
     openbabel-wheel==3.1.1.18 \
     chempy==0.8.3
 
@@ -281,7 +290,85 @@ else:
 print("=" * 60)
 SCRIPT
 
-RUN chmod +x /usr/local/bin/verify-gpu.py
+# GPU分子計算サンプルスクリプトの作成
+RUN cat <<'SCRIPT' > /usr/local/bin/test-gpu-chemistry.py
+#!/usr/bin/env python3
+"""
+RTX 50シリーズでのGPU加速分子計算デモ
+"""
+import torch
+import numpy as np
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+import pyscf
+from pyscf import gto, scf
+import pubchempy as pcp
+
+print("=" * 60)
+print("GPU加速分子計算環境テスト")
+print("=" * 60)
+
+# 1. GPU確認
+print("\n[1] GPU状態確認")
+if torch.cuda.is_available():
+    print(f"✅ GPU: {torch.cuda.get_device_name(0)}")
+    print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    props = torch.cuda.get_device_properties(0)
+    if props.major == 12 and props.minor == 0:
+        print(f"✅ RTX 50シリーズ (sm_120) 検出！")
+else:
+    print("❌ GPU利用不可")
+
+# 2. RDKit分子処理
+print("\n[2] RDKit分子処理")
+mol = Chem.MolFromSmiles('CC(=O)OC1=CC=CC=C1C(=O)O')  # アスピリン
+if mol:
+    mw = Descriptors.MolWt(mol)
+    logp = Descriptors.MolLogP(mol)
+    print(f"✅ アスピリン: 分子量={mw:.2f}, LogP={logp:.2f}")
+
+# 3. PySCF量子化学計算
+print("\n[3] PySCF量子化学計算")
+mol_h2o = gto.Mole()
+mol_h2o.atom = '''
+    O  0.0  0.0  0.0
+    H  0.757  0.586  0.0
+    H -0.757  0.586  0.0
+'''
+mol_h2o.basis = '6-31G'
+mol_h2o.build()
+
+# 4. GPU加速の確認（gpu4pyscfがインストールされている場合）
+try:
+    import gpu4pyscf
+    print("✅ gpu4pyscf インストール済み - GPU加速利用可能")
+    # GPU加速SCF計算
+    mf = gpu4pyscf.scf.RHF(mol_h2o).to_gpu()
+    energy = mf.kernel()
+    print(f"   HF Energy (GPU): {energy:.6f} Hartree")
+except ImportError:
+    print("⚠️  gpu4pyscf CPU版を使用")
+    mf = scf.RHF(mol_h2o)
+    energy = mf.kernel()
+    print(f"   HF Energy (CPU): {energy:.6f} Hartree")
+
+# 5. PubChemPyテスト
+print("\n[4] PubChemPyデータ取得")
+try:
+    compounds = pcp.get_compounds('Aspirin', 'name')
+    if compounds:
+        c = compounds[0]
+        print(f"✅ PubChem CID: {c.cid}")
+        print(f"   分子式: {c.molecular_formula}")
+except Exception as e:
+    print(f"⚠️  PubChemアクセスエラー: {e}")
+
+print("\n" + "=" * 60)
+print("すべてのテスト完了！")
+print("=" * 60)
+SCRIPT
+
+RUN chmod +x /usr/local/bin/test-gpu-chemistry.py
 
 # 起動スクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/start-environment.sh
@@ -294,6 +381,12 @@ echo "🚀 RTX 50シリーズ対応 計算化学・機械学習研究環境を�
 echo "🎮 GPU検証中..."
 python3 /usr/local/bin/verify-gpu.py || {
     echo "⚠️ GPU検証に失敗しましたが、続行します..."
+}
+
+# 分子計算環境テスト（オプション）
+echo "🧪 分子計算環境の確認中..."
+python3 -c "import pyscf, rdkit, pubchempy, py3Dmol; print('✅ 主要ライブラリ利用可能')" || {
+    echo "⚠️ 一部のライブラリが利用できません"
 }
 
 # ログディレクトリ作成
