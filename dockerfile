@@ -41,8 +41,6 @@ RUN apt-get update && \
     ca-certificates gnupg lsb-release \
     # Python 3.11（PyTorch Nightlyと互換性が良い）
     python3.11 python3.11-dev python3.11-venv python3-pip \
-    # Node.js用（Claude Code用）
-    nodejs npm \
     # 化学計算用依存関係
     libopenblas-dev liblapack-dev libatlas-base-dev \
     libhdf5-dev libnetcdf-dev \
@@ -76,7 +74,7 @@ RUN pip install --no-cache-dir --pre \
 # Pythonパッケージ一括インストール
 # 依存関係の問題を回避するため、ビルドツール(six, hatchling)を先にインストール
 # ===================================================
-RUN pip install --no-cache-dir six hatchling
+RUN pip install --no-cache-dir six hatchling wheel
 
 RUN pip install --no-cache-dir --no-build-isolation \
     # CuPy for CUDA 12.x（GPU4PySCF用）
@@ -125,7 +123,7 @@ RUN pip install --no-cache-dir --no-build-isolation \
     # 分子モデリング
     biopython==1.79 \
     biotite==0.39.0 \
-    prody==2.4.1 \
+    git+https://github.com/prody/ProDy.git \
     oddt==0.7 \
     deepchem \
     \
@@ -139,8 +137,8 @@ RUN pip install --no-cache-dir --no-build-isolation \
     networkx==3.3 \
     \
     # 開発ツール
-    joblib==1.4.0 \
-    tqdm==4.66.2 \
+    joblib==1.5.1 \
+    tqdm==4.67.1 \
     rich==13.7.1 \
     pytest==8.1.1 \
     black==24.3.0 \
