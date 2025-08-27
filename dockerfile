@@ -72,13 +72,16 @@ RUN pip install --no-cache-dir --pre \
     torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/nightly/cu128
 
-# CuPy for CUDA 12.x（GPU4PySCF用）
+# ===================================================
+# Pythonパッケージ一括インストール
+# 依存関係の競合を避けるため、一つのRUN命令にまとめる
+# ===================================================
 RUN pip install --no-cache-dir \
+    # CuPy for CUDA 12.x（GPU4PySCF用）
     cupy-cuda12x==13.6.0 \
-    cutensor-cu12
-
-# 基本的な科学計算ライブラリ
-RUN pip install --no-cache-dir \
+    cutensor-cu12 \
+    \
+    # 基本的な科学計算ライブラリ (numpyバージョンを固定)
     numpy==1.26.4 \
     scipy==1.13.0 \
     pandas==2.2.2 \
@@ -87,27 +90,24 @@ RUN pip install --no-cache-dir \
     plotly==5.20.0 \
     jupyter==1.0.0 \
     jupyterlab==4.1.5 \
-    ipython==8.23.0
-
-# 機械学習フレームワーク（PyTorch以外）
-RUN pip install --no-cache-dir \
+    ipython==8.23.0 \
+    \
+    # 機械学習フレームワーク（PyTorch以外）
     tensorflow==2.16.1 \
     scikit-learn==1.4.2 \
     xgboost==2.0.3 \
     lightgbm==4.3.0 \
     catboost==1.2.3 \
-    keras==3.1.1
-
-# Deep Learning - Transformers & Ecosystem
-RUN pip install --no-cache-dir \
+    keras==3.1.1 \
+    \
+    # Deep Learning - Transformers & Ecosystem
     transformers==4.40.0 \
     accelerate==0.29.3 \
     datasets==2.19.0 \
     tokenizers==0.19.1 \
-    sentencepiece==0.2.0
-
-# 計算化学ライブラリ（GPU対応版含む）
-RUN pip install --no-cache-dir \
+    sentencepiece==0.2.0 \
+    \
+    # 計算化学ライブラリ（GPU対応版含む）
     rdkit==2024.03.1 \
     ase==3.22.1 \
     mdanalysis==2.7.0 \
@@ -118,28 +118,25 @@ RUN pip install --no-cache-dir \
     pubchempy==1.0.4 \
     py3Dmol==2.5.2 \
     openbabel-wheel==3.1.1.18 \
-    chempy==0.8.3
-
-# 分子モデリング
-RUN pip install --no-cache-dir \
+    chempy==0.8.3 \
+    \
+    # 分子モデリング
     biopython==1.79 \
     biotite==0.39.0 \
     prody==2.4.1 \
     oddt==0.7 \
-    deepchem
-
-# データ処理とツール
-RUN pip install --no-cache-dir \
+    deepchem \
+    \
+    # データ処理とツール
     h5py==3.11.0 \
     netCDF4==1.6.5 \
     xarray==2024.3.0 \
     dask==2024.4.2 \
     bokeh==3.4.1 \
     altair==5.3.0 \
-    networkx==3.3
-
-# 開発ツール
-RUN pip install --no-cache-dir \
+    networkx==3.3 \
+    \
+    # 開発ツール
     joblib==1.4.0 \
     tqdm==4.66.2 \
     rich==13.7.1 \
@@ -147,7 +144,10 @@ RUN pip install --no-cache-dir \
     black==24.3.0 \
     flake8==7.0.0 \
     mypy==1.9.0 \
-    pre-commit==3.7.0
+    pre-commit==3.7.0 \
+    \
+    # Serena-MCP
+    git+https://github.com/oraios/serena.git
 
 # Node.js最新化とClaude Code関連のインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -159,9 +159,6 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # Claude-bridgeのインストール（npmパッケージ版）
 RUN npm install -g @mariozechner/claude-bridge
-
-# Serena-MCPのインストール
-RUN pip install --no-cache-dir git+https://github.com/oraios/serena.git
 
 # Ollama-MCP-Bridgeのセットアップ
 RUN git clone https://github.com/patruff/ollama-mcp-bridge.git /opt/ollama-mcp-bridge && \
