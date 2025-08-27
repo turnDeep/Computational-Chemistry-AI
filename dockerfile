@@ -124,6 +124,7 @@ RUN pip install --no-cache-dir \
     biopython==1.79 \
     biotite==0.39.0 \
     prody==2.4.1 \
+    six \
     oddt==0.7 \
     deepchem \
     \
