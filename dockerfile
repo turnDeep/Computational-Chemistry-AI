@@ -74,9 +74,9 @@ RUN pip install --no-cache-dir --pre \
 
 # ===================================================
 # Pythonパッケージ一括インストール
-# 依存関係の問題を回避するため、sixを先にインストール
+# 依存関係の問題を回避するため、ビルドツール(six, hatchling)を先にインストール
 # ===================================================
-RUN pip install --no-cache-dir six
+RUN pip install --no-cache-dir six hatchling
 
 RUN pip install --no-cache-dir --no-build-isolation \
     # CuPy for CUDA 12.x（GPU4PySCF用）
