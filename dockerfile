@@ -74,8 +74,10 @@ RUN pip install --no-cache-dir --pre \
 
 # ===================================================
 # Pythonパッケージ一括インストール
-# 依存関係の競合を避けるため、一つのRUN命令にまとめる
+# 依存関係の問題を回避するため、sixを先にインストール
 # ===================================================
+RUN pip install --no-cache-dir six
+
 RUN pip install --no-cache-dir \
     # CuPy for CUDA 12.x（GPU4PySCF用）
     cupy-cuda12x==13.6.0 \
@@ -124,7 +126,6 @@ RUN pip install --no-cache-dir \
     biopython==1.79 \
     biotite==0.39.0 \
     prody==2.4.1 \
-    six \
     oddt==0.7 \
     deepchem \
     \
