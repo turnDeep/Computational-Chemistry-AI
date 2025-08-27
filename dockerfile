@@ -4,8 +4,8 @@
 # OpenAI API互換モードでclaude-bridge使用
 # ================================================
 
-# CUDA 12.8 Ubuntu 24.04 ベースイメージ（Blackwell対応）
-FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
+# CUDA 12.8 Ubuntu 22.04 ベースイメージ（Blackwell対応）
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
 
 # 環境変数設定（sm_120対応 + OpenAI互換モード）
 ENV DEBIAN_FRONTEND=noninteractive \
