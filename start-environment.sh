@@ -38,8 +38,9 @@ echo "   モデル: ${OLLAMA_MODEL:-gpt-oss:20b}"
 echo "   API Base: ${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1}"
 
 # Claude-bridgeを起動（バックグラウンド）
-PORT=${CLAUDE_BRIDGE_PORT:-8080} OPENAI_API_KEY=dummy claude-bridge openai ${OLLAMA_MODEL:-gpt-oss:20b} \
-    --baseURL ${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1} \
+export CLAUDE_BRIDGE_MODEL="${OLLAMA_MODEL:-gpt-oss:20b}"
+export CLAUDE_BRIDGE_API_BASE="${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1}"
+PORT=${CLAUDE_BRIDGE_PORT:-8080} OPENAI_API_KEY=dummy claude-bridge openai gpt-4-turbo \
     > /workspace/logs/claude-bridge.log 2>&1 &
 BRIDGE_PID=$!
 echo "✅ Claude-bridge起動 (PID: $BRIDGE_PID)"
