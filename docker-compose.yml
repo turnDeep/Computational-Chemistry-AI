@@ -1,6 +1,7 @@
 # ================================================
 # RTX 50シリーズ（5090/5070 Ti等）対応版
 # CUDA 12.8 + PyTorch Nightly使用
+# OpenAI API互換モードでclaude-bridge使用
 # ================================================
 
 services:
@@ -23,7 +24,7 @@ services:
               count: all
               capabilities: [gpu]
     
-    # 環境変数（RTX 50シリーズ最適化）
+    # 環境変数（RTX 50シリーズ最適化 + OpenAI互換モード）
     environment:
       # GPU設定
       - NVIDIA_VISIBLE_DEVICES=all
@@ -33,9 +34,11 @@ services:
       - CUDA_LAUNCH_BLOCKING=0  # パフォーマンス最適化
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       
-      # Ollama設定
+      # Ollama設定（OpenAI互換エンドポイント）
       - OLLAMA_HOST=http://host.docker.internal:11434
-      - OLLAMA_MODEL=gpt-oss-20b
+      - OLLAMA_API_BASE=http://host.docker.internal:11434/v1
+      - OLLAMA_MODEL=gpt-oss:20b
+      - OPENAI_API_KEY=dummy  # ダミーキー（Ollamaには不要だが、claude-bridgeが要求）
       
       # サービス設定
       - JUPYTER_TOKEN=research2025  # 変更推奨
