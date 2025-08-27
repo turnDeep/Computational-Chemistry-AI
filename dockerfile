@@ -1,12 +1,13 @@
 # ================================================
 # RTX 50シリーズ（Blackwell sm_120）対応版
 # CUDA 12.8 + PyTorch Nightlyビルドを使用
+# OpenAI API互換モードでclaude-bridge使用
 # ================================================
 
 # CUDA 12.8 Ubuntu 24.04 ベースイメージ（Blackwell対応）
 FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
 
-# 環境変数設定（sm_120対応）
+# 環境変数設定（sm_120対応 + OpenAI互換モード）
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,7 +15,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/cuda-12.8/bin:$PATH \
     LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH \
     OLLAMA_HOST=http://host.docker.internal:11434 \
-    OLLAMA_MODEL=gpt-oss-20b \
+    OLLAMA_API_BASE=http://host.docker.internal:11434/v1 \
+    OLLAMA_MODEL=gpt-oss:20b \
+    OPENAI_API_KEY=dummy \
     CLAUDE_BRIDGE_PORT=8080 \
     MCP_SERVER_PORT=9121 \
     LANG=en_US.UTF-8 \
@@ -154,7 +157,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 # Claude Codeのインストール
 RUN npm install -g @anthropic-ai/claude-code
 
-# Claude-bridgeのインストール
+# Claude-bridgeのインストール（npmパッケージ版）
 RUN npm install -g @mariozechner/claude-bridge
 
 # Serena-MCPのインストール
@@ -166,30 +169,11 @@ RUN git clone https://github.com/patruff/ollama-mcp-bridge.git /opt/ollama-mcp-b
     npm install && \
     npm run build || true
 
-# 設定ファイルの作成
-# Claude-bridge設定
-RUN mkdir -p /root/.claude-bridge && \
-    cat <<EOF > /root/.claude-bridge/config.json
-{
-  "ollama": {
-    "baseUrl": "http://host.docker.internal:11434",
-    "model": "__OLLAMA_MODEL_PLACEHOLDER__",
-    "timeout": 300000
-  },
-  "server": {
-    "port": 8080,
-    "host": "0.0.0.0"
-  },
-  "logging": {
-    "level": "info",
-    "file": "/workspace/logs/claude-bridge.log"
-  }
-}
-EOF
+# 設定ディレクトリの作成
+RUN mkdir -p /root/.claude-bridge /workspace/logs /root/.config/claude /root/.serena
 
 # Serena-MCP設定
-RUN mkdir -p /root/.serena && \
-    cat <<EOF > /root/.serena/serena_config.yml
+RUN cat <<EOF > /root/.serena/serena_config.yml
 contexts:
   agent:
     system_prompt: |
@@ -216,8 +200,7 @@ settings:
 EOF
 
 # MCP統合設定
-RUN mkdir -p /root/.config/claude && \
-    cat <<EOF > /root/.config/claude/config.json
+RUN cat <<EOF > /root/.config/claude/config.json
 {
   "mcpServers": {
     "serena": {
@@ -288,6 +271,8 @@ else:
 
 print("=" * 60)
 SCRIPT
+
+RUN chmod +x /usr/local/bin/verify-gpu.py
 
 # GPU分子計算サンプルスクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/test-gpu-chemistry.py
@@ -369,83 +354,8 @@ SCRIPT
 
 RUN chmod +x /usr/local/bin/test-gpu-chemistry.py
 
-# 起動スクリプトの作成
-RUN cat <<'SCRIPT' > /usr/local/bin/start-environment.sh
-#!/bin/bash
-set -e
-
-echo "🚀 RTX 50シリーズ対応 計算化学・機械学習研究環境を起動しています..."
-
-# GPU検証
-echo "🎮 GPU検証中..."
-python3 /usr/local/bin/verify-gpu.py || {
-    echo "⚠️ GPU検証に失敗しましたが、続行します..."
-}
-
-# 分子計算環境テスト（オプション）
-echo "🧪 分子計算環境の確認中..."
-python3 -c "import pyscf, rdkit, pubchempy, py3Dmol; print('✅ 主要ライブラリ利用可能')" || {
-    echo "⚠️ 一部のライブラリが利用できません"
-}
-
-# ログディレクトリ作成
-mkdir -p /workspace/logs
-
-# Ollamaの接続確認
-echo "🔍 Ollamaサーバーの接続を確認中..."
-if curl -s http://host.docker.internal:11434/api/tags > /dev/null 2>&1; then
-    echo "✅ Ollamaサーバーに接続成功"
-else
-    echo "⚠️  警告: Ollamaサーバーに接続できません。ホスト側でOllamaが起動していることを確認してください。"
-fi
-
-# Claude-bridgeの起動
-echo "🌉 Claude-bridgeを起動中..."
-# モデル設定を環境変数から反映
-sed -i "s|__OLLAMA_MODEL_PLACEHOLDER__|${OLLAMA_MODEL:-gpt-oss-20b}|g" /root/.claude-bridge/config.json
-cd /opt/claude-bridge
-source .venv/bin/activate
-python -m llm_bridge_claude_code &
-BRIDGE_PID=$!
-echo "✅ Claude-bridge起動 (PID: $BRIDGE_PID)"
-
-# Serena-MCPの起動（エラーを無視）
-echo "🎯 Serena-MCPサーバーを起動中..."
-serena start-mcp-server --context agent --transport sse --port 9121 2>/dev/null &
-SERENA_PID=$!
-echo "✅ Serena-MCP起動 (PID: $SERENA_PID)"
-
-# JupyterLabの起動
-echo "📊 JupyterLabを起動中..."
-jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
-    --NotebookApp.token="${JUPYTER_TOKEN:-research2025}" &
-JUPYTER_PID=$!
-echo "✅ JupyterLab起動 (PID: $JUPYTER_PID)"
-
-echo ""
-echo "=========================================="
-echo "🎉 環境の起動が完了しました！"
-echo "=========================================="
-echo ""
-echo "📌 アクセス情報:"
-echo "  - JupyterLab: http://localhost:8888"
-echo "  - Claude-bridge: http://localhost:8080"
-echo "  - Serena-MCP: http://localhost:9121"
-echo "  - Serena Dashboard: http://localhost:9122"
-echo ""
-echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
-echo "🔧 CUDA 12.8 + PyTorch Nightly"
-echo ""
-echo "💡 Claude Codeを使用するには:"
-echo "  docker exec -it comp-chem-ml-env claude"
-echo ""
-echo "📁 作業ディレクトリ: /workspace"
-echo ""
-
-# プロセスの監視
-wait
-SCRIPT
-
+# 起動スクリプトをコピー（外部ファイルから）
+COPY start-environment.sh /usr/local/bin/start-environment.sh
 RUN chmod +x /usr/local/bin/start-environment.sh
 
 # Pythonパス設定
@@ -455,7 +365,7 @@ ENV PYTHONPATH="/workspace:$PYTHONPATH"
 EXPOSE 8080 8888 9121 9122
 
 # ボリュームマウントポイント
-VOLUME ["/workspace", "/root/.claude", "/root/.serena"]
+VOLUME ["/workspace", "/root/.claude", "/root/.serena", "/workspace/logs"]
 
 # エントリーポイント
 ENTRYPOINT ["/usr/local/bin/start-environment.sh"]
