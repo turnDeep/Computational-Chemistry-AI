@@ -78,7 +78,7 @@ RUN pip install --no-cache-dir --pre \
 # ===================================================
 RUN pip install --no-cache-dir six
 
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --no-build-isolation \
     # CuPy for CUDA 12.x（GPU4PySCF用）
     cupy-cuda12x==13.6.0 \
     cutensor-cu12 \
