@@ -260,6 +260,12 @@ def main():
     atoms, coords = smiles_to_xyz(args.smiles)
     print(f"原子数: {len(atoms)}")
     
+    print("\n" + "="*60)
+    print("⚠️  警告: 現在の計算は、MMFF力場から生成された初期構造に\n"
+          "   基づいています。より正確な結果を得るには、まず同レベルの\n"
+          "   理論計算で構造最適化を実行することを強く推奨します。")
+    print("="*60)
+
     # PySCF分子作成
     print("\n[2] PySCF分子オブジェクト作成...")
     mol = create_pyscf_mol(atoms, coords, args.basis, args.charge, args.spin)

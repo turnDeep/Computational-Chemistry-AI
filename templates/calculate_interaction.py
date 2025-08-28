@@ -89,33 +89,39 @@ def create_pyscf_mol(atoms, coords, basis='6-31+G*', charge=0, spin=0):
     
     return mol
 
-def calculate_energy(mol, method='B3LYP', use_bsse_correction=False):
+def calculate_energy(mol, method='B3LYP'):
     """エネルギー計算"""
-    
+
+    # --- SCF (自己無撞着場) 計算 ---
+    # HFまたはDFT計算を実行します。
+    # MP2の場合、これは参照軌道を提供します。
     if method == 'HF':
-        mf = scf.RHF(mol)
+        mf = scf.RHF(mol) if mol.spin == 0 else scf.UHF(mol)
+    elif method in ['B3LYP', 'PBE', 'M06-2X']:
+        mf = dft.RKS(mol) if mol.spin == 0 else dft.UKS(mol)
+        mf.xc = method
     elif method == 'MP2':
-        mf = scf.RHF(mol)
-        mf.kernel()
-        mp2 = mp.MP2(mf)
-        e_corr, t2 = mp2.kernel()
-        return mf.e_tot + e_corr
-    elif method in ['B3LYP', 'PBE', 'M06-2X', 'B3LYP-D3']:
-        mf = dft.RKS(mol)
-        if method == 'B3LYP-D3':
-            mf.xc = 'B3LYP'
-            # D3分散補正（簡易版）
-            # 実際にはdftd3ライブラリが必要
-        else:
-            mf.xc = method
+        # MP2の場合、参照としてまずHF計算を実行する必要があります。
+        mf = scf.RHF(mol) if mol.spin == 0 else scf.UHF(mol)
     else:
         raise ValueError(f"Unknown method: {method}")
-    
-    energy = mf.kernel()
-    
+
+    # SCF計算を実行
+    mf.kernel()
+
     if not mf.converged:
-        print(f"  警告: SCF計算が収束しませんでした")
-    
+        print(f"  警告: SCF計算({mf.__class__.__name__})が収束しませんでした")
+
+    # --- Post-SCF 計算 (MP2など) ---
+    if method == 'MP2':
+        # mp.MP2はmfオブジェクトに基づいてRMP2/UMP2を正しく処理するエイリアスです
+        pt = mp.MP2(mf)
+        e_corr, _ = pt.kernel()
+        energy = mf.e_tot + e_corr
+    else:
+        # HFとDFTの場合、全エネルギーはSCFエネルギーです
+        energy = mf.e_tot
+
     return energy
 
 def calculate_bsse_correction(atoms1, coords1, atoms2, coords2, 
