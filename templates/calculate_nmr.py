@@ -111,108 +111,111 @@ def calculate_nmr_shielding(mf):
     
     return shielding, iso_shielding, anisotropy
 
-def convert_to_chemical_shift(iso_shielding, atoms, reference='TMS'):
-    """遮蔽定数を化学シフト（ppm）に変換"""
-    # 簡易的な変換（実際は基準物質の計算が必要）
-    # ここでは経験的な値を使用
-    
+def convert_to_chemical_shift(iso_shielding, atoms, ref_shieldings):
+    """
+    遮蔽定数を化学シフト（ppm）に変換します。
+    δ = σ_ref - σ_calc
+    """
     chemical_shifts = []
     
     for i, (shield, atom) in enumerate(zip(iso_shielding, atoms)):
-        if atom == 'H':
-            # 1H NMR（TMS基準を仮定）
-            # 典型的なH原子の絶対遮蔽は約31 ppm
-            ref_shield = 31.0  # TMS のH遮蔽（推定値）
-            shift = ref_shield - shield
-            chemical_shifts.append(shift)
-        elif atom == 'C':
-            # 13C NMR（TMS基準を仮定）
-            # 典型的なC原子の絶対遮蔽は約186 ppm
-            ref_shield = 186.0  # TMS のC遮蔽（推定値）
+        ref_shield = ref_shieldings.get(atom)
+        if ref_shield is not None:
             shift = ref_shield - shield
             chemical_shifts.append(shift)
         else:
-            # その他の原子（簡易推定）
+            # 基準値がない原子核は、遮蔽定数をそのまま返す
             chemical_shifts.append(shield)
-    
+
     return chemical_shifts
 
-def calculate_j_coupling(mf, atoms):
-    """スピン-スピン結合定数の計算（簡易版）"""
-    print("\nスピン結合定数計算中...")
+def get_tms_shielding(method, basis, no_opt=False):
+    """
+    基準物質であるTMS（テトラメチルシラン）のNMR遮蔽定数を計算し、
+    1Hおよび13C NMRの基準値を取得します。
+    """
+    print("\n[Ref] 基準物質(TMS)の遮蔽定数を計算中...")
+    tms_smiles = "C[Si](C)(C)C"
     
-    # 完全な実装には専用のモジュールが必要
-    # ここでは簡易的な推定値を返す
-    
-    n_atoms = len(atoms)
-    j_matrix = np.zeros((n_atoms, n_atoms))
-    
-    # H-H結合の典型値（Hz）
-    for i in range(n_atoms):
-        for j in range(i+1, n_atoms):
-            if atoms[i] == 'H' and atoms[j] == 'H':
-                # 距離に基づく簡易推定
-                # 実際は Fermi接触項等の計算が必要
-                dist = np.linalg.norm(mf.mol.atom_coord(i) - mf.mol.atom_coord(j))
-                if dist < 3.0:  # 3結合以内
-                    j_matrix[i, j] = 7.0  # 典型的な3J_HH
-                    j_matrix[j, i] = j_matrix[i, j]
-            elif (atoms[i] == 'H' and atoms[j] == 'C') or \
-                 (atoms[i] == 'C' and atoms[j] == 'H'):
-                # 1J_CH の典型値
-                dist = np.linalg.norm(mf.mol.atom_coord(i) - mf.mol.atom_coord(j))
-                if dist < 1.2:  # 直接結合
-                    j_matrix[i, j] = 125.0  # 典型的な1J_CH
-                    j_matrix[j, i] = j_matrix[i, j]
-    
-    return j_matrix
+    try:
+        atoms, coords, _ = smiles_to_xyz(tms_smiles)
+        tms_mol = create_pyscf_mol(atoms, coords, basis, charge=0, spin=0)
+
+        if not no_opt:
+            _, tms_mf, _ = optimize_geometry(tms_mol, method)
+        else:
+            if method == 'HF':
+                tms_mf = scf.RHF(tms_mol)
+            else:
+                tms_mf = dft.RKS(tms_mol)
+                tms_mf.xc = method
+            tms_mf.kernel()
+
+        _, tms_iso_shielding, _ = calculate_nmr_shielding(tms_mf)
+
+        tms_atoms = tms_mf.mol.atom_symbols()
+        c_indices = [i for i, atom in enumerate(tms_atoms) if atom == 'C']
+        h_indices = [i for i, atom in enumerate(tms_atoms) if atom == 'H']
+
+        ref_shield_c = np.mean(tms_iso_shielding[c_indices])
+        ref_shield_h = np.mean(tms_iso_shielding[h_indices])
+
+        print(f"[Ref] TMS基準値: C = {ref_shield_c:.3f}, H = {ref_shield_h:.3f}")
+        return {'H': ref_shield_h, 'C': ref_shield_c}
+
+    except Exception as e:
+        print(f"❌ 基準物質(TMS)の計算に失敗: {e}")
+        print("フォールバックとして経験的な基準値を使用します。")
+        return {'H': 31.0, 'C': 186.0}
+
+# J-coupling calculation is complex and not implemented.
+# The previous fake implementation has been removed.
 
 def assign_nmr_peaks(chemical_shifts, atoms, rdkit_mol):
     """NMRピークを原子グループに割り当て"""
     assignments = []
     
+    # RDKit分子の原子数をチェック
+    if rdkit_mol.GetNumAtoms() != len(atoms):
+        print("警告: RDKit分子とPySCF分子の原子数が一致しません。")
+        # SMILESからHを付加した新しいRDKit分子を生成
+        mol_from_smiles = Chem.MolFromSmiles(Chem.MolToSmiles(rdkit_mol))
+        rdkit_mol = Chem.AddHs(mol_from_smiles)
+
     for i, (shift, atom) in enumerate(zip(chemical_shifts, atoms)):
-        if atom == 'H':
-            # 水素の環境を判定
+        if atom not in ['H', 'C']:
+            continue
+
+        try:
             rdkit_atom = rdkit_mol.GetAtomWithIdx(i)
-            neighbors = [n.GetSymbol() for n in rdkit_atom.GetNeighbors()]
-            
-            if 'O' in neighbors:
-                env = "OH/CH-O"
-            elif 'N' in neighbors:
-                env = "NH/CH-N"
-            elif 'C' in neighbors and len(neighbors) == 1:
-                env = "CH3/CH2/CH"
-            else:
-                env = "H"
+            env = ""
+            if atom == 'H':
+                neighbors = [n.GetSymbol() for n in rdkit_atom.GetNeighbors()]
+                if 'O' in neighbors: env = "OH/CH-O"
+                elif 'N' in neighbors: env = "NH/CH-N"
+                else: env = "CH/CH2/CH3"
+            elif atom == 'C':
+                if rdkit_atom.GetIsAromatic():
+                    env = "芳香族C"
+                elif rdkit_atom.GetHybridization() == Chem.HybridizationType.SP2:
+                    is_carbonyl = any(n.GetSymbol() == 'O' and \
+                                      rdkit_mol.GetBondBetweenAtoms(i, n.GetIdx()).GetBondType() == Chem.BondType.DOUBLE \
+                                      for n in rdkit_atom.GetNeighbors())
+                    if is_carbonyl: env = "C=O"
+                    else: env = "C=C"
+                elif rdkit_atom.GetHybridization() == Chem.HybridizationType.SP3:
+                    env = "sp3-C"
+                else: env = "sp-C"
             
             assignments.append({
-                'atom_idx': i,
-                'atom': atom,
-                'shift': shift,
-                'environment': env
+                'atom_idx': i, 'atom': atom, 'shift': shift, 'environment': env
             })
-        elif atom == 'C':
-            # 炭素の環境を判定
-            rdkit_atom = rdkit_mol.GetAtomWithIdx(i)
-            
-            if rdkit_atom.GetHybridization() == Chem.HybridizationType.SP2:
-                if any(n.GetSymbol() == 'O' for n in rdkit_atom.GetNeighbors()):
-                    env = "C=O"
-                else:
-                    env = "C=C/芳香族"
-            elif rdkit_atom.GetHybridization() == Chem.HybridizationType.SP3:
-                env = "sp3-C"
-            else:
-                env = "C"
-            
+        except Exception:
+            # RDKitのインデックスとPySCFのインデックスがずれる場合がある
             assignments.append({
-                'atom_idx': i,
-                'atom': atom,
-                'shift': shift,
-                'environment': env
+                'atom_idx': i, 'atom': atom, 'shift': shift, 'environment': '不明'
             })
-    
+
     return assignments
 
 def plot_nmr_spectrum(assignments, nucleus='1H', save_file=None):
@@ -241,7 +244,7 @@ def plot_nmr_spectrum(assignments, nucleus='1H', save_file=None):
     
     for shift, intensity in peaks:
         # ローレンツ関数
-        width = 0.002 if nucleus == '1H' else 0.5  # ピーク幅
+        width = 0.02 if nucleus == '1H' else 0.5  # ピーク幅
         lorentz = intensity * width**2 / ((x - shift)**2 + width**2)
         y += lorentz
     
@@ -258,7 +261,7 @@ def plot_nmr_spectrum(assignments, nucleus='1H', save_file=None):
     ax.set_ylabel('Intensity', fontsize=12)
     ax.set_title(title, fontsize=14)
     ax.set_xlim(x_range[1], x_range[0])  # NMRは右から左
-    ax.set_ylim(0, max(y) * 1.1)
+    ax.set_ylim(0, max(y) * 1.1 if max(y) > 0 else 1)
     ax.grid(True, alpha=0.3)
     
     # 領域ラベル（1H NMRの場合）
@@ -290,9 +293,6 @@ def main():
                        help='分子の電荷 (default: 0)')
     parser.add_argument('--spin', type=int, default=0,
                        help='スピン多重度-1 (default: 0)')
-    parser.add_argument('--reference', type=str, default='TMS',
-                       choices=['TMS', 'CDCl3', 'D2O', 'DMSO'],
-                       help='NMR基準物質 (default: TMS)')
     parser.add_argument('--plot', action='store_true',
                        help='NMRスペクトルをプロット')
     parser.add_argument('--no-opt', action='store_true',
@@ -305,7 +305,7 @@ def main():
     print("=" * 60)
     print(f"SMILES: {args.smiles}")
     print(f"手法: {args.method}/{args.basis}")
-    print(f"基準: {args.reference}")
+    print(f"基準: TMS (同レベル理論で計算)")
     
     # 分子情報取得
     mol_rdkit = Chem.MolFromSmiles(args.smiles)
@@ -329,6 +329,9 @@ def main():
     print(f"電子数: {mol.nelectron}")
     print(f"基底関数数: {mol.nao}")
     
+    # 基準物質(TMS)の計算
+    ref_shieldings = get_tms_shielding(args.method, args.basis, args.no_opt)
+
     # 構造最適化
     if not args.no_opt:
         print(f"\n[3] 構造最適化 ({args.method}/{args.basis})...")
@@ -350,14 +353,14 @@ def main():
         shielding, iso_shielding, anisotropy = calculate_nmr_shielding(mf_opt)
         
         # 化学シフトに変換
-        chemical_shifts = convert_to_chemical_shift(iso_shielding, atoms, args.reference)
+        chemical_shifts = convert_to_chemical_shift(iso_shielding, atoms, ref_shieldings)
         
         # ピーク割り当て
         assignments = assign_nmr_peaks(chemical_shifts, atoms, mol_with_h)
         
         # 結果表示
         print("\n" + "=" * 70)
-        print("NMR化学シフト")
+        print("NMR化学シフト (vs TMS)")
         print("=" * 70)
         
         # 1H NMR
@@ -386,18 +389,7 @@ def main():
         else:
             print("  炭素原子なし")
         
-        # スピン結合定数（簡易版）
-        print("\n[5] スピン-スピン結合定数...")
-        j_matrix = calculate_j_coupling(mf_opt, atoms)
-        
-        # 主要な結合定数を表示
-        print("\n主要なJ結合定数 (Hz):")
-        printed_pairs = set()
-        for i in range(len(atoms)):
-            for j in range(i+1, len(atoms)):
-                if j_matrix[i, j] > 0.1 and (i, j) not in printed_pairs:
-                    print(f"  {atoms[i]}{i}-{atoms[j]}{j}: {j_matrix[i, j]:.1f} Hz")
-                    printed_pairs.add((i, j))
+        # J結合の計算は複雑なため、このスクリプトではサポートされていません。
         
         # スペクトルプロット
         if args.plot:
@@ -429,8 +421,11 @@ def main():
         f.write(f"SMILES: {args.smiles}\n")
         f.write(f"Formula: {formula}\n")
         f.write(f"Method: {args.method}/{args.basis}\n")
-        f.write(f"Reference: {args.reference}\n\n")
+        f.write(f"Reference: TMS (calculated at the same level of theory)\n\n")
         
+        h_peaks = [a for a in assignments if a['atom'] == 'H']
+        c_peaks = [a for a in assignments if a['atom'] == 'C']
+
         f.write("1H NMR Chemical Shifts (ppm):\n")
         for peak in sorted(h_peaks, key=lambda x: x['shift']) if h_peaks else []:
             f.write(f"  H{peak['atom_idx']}: {peak['shift']:.2f} ppm ({peak['environment']})\n")

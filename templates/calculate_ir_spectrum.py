@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors
 from pyscf import gto, scf, dft, hessian
+from pyscf.prop import infrared
 from pyscf.geomopt.geometric_solver import optimize
 import torch
 import warnings
@@ -83,60 +84,27 @@ def optimize_geometry(mol, method='B3LYP'):
 def calculate_ir_spectrum(mf):
     """IR強度を含む振動数解析"""
     print("\nIRスペクトル計算中...")
+
+    # infraredモジュールを使用して、振動数とIR強度を正しく計算します。
+    # これはHessian計算と双極子微分の計算を内部で行います。
+    if isinstance(mf, (dft.rks.RKS, dft.uks.UKS)):
+        ir_calc = infrared.RKS(mf)
+    else:  # HF
+        ir_calc = infrared.RHF(mf)
     
-    mol = mf.mol
+    # kernel()の実行で計算が走り、結果がオブジェクトに格納されます。
+    ir_calc.kernel()
     
-    # Hessian計算
-    if isinstance(mf, (scf.hf.RHF, scf.uhf.UHF)):
-        h = hessian.RHF(mf)
-    else:
-        h = hessian.RKS(mf)
-    
-    # Hessian行列と双極子微分を計算
-    hess = h.kernel()
-    
-    # 振動解析（質量加重座標での対角化）
-    from pyscf.hessian import thermo
-    freq_info = thermo.harmonic_analysis(mol, hess)
-    
-    # IR強度計算（双極子モーメントの微分から）
-    # 簡易的な方法：基準振動の変位に対する双極子変化を推定
-    ir_intensities = calculate_ir_intensities(mf, freq_info)
+    # Pyscfの一部のバージョンでは .summary() を呼ばないと
+    # 強度が計算されないことがあるため、念のため呼び出します。
+    ir_calc.summary()
+
+    # harmonic_analysisの結果とIR強度を取得します。
+    # ir_calc.freq_info は harmonic_analysis の結果と同じ辞書形式です。
+    freq_info = ir_calc.freq_info
+    ir_intensities = ir_calc.ir_intensity
     
     return freq_info, ir_intensities
-
-def calculate_ir_intensities(mf, freq_info):
-    """IR強度を計算（簡易版）"""
-    # 振動モードごとのIR強度を推定
-    # 実際のIR強度計算は双極子微分が必要だが、簡易的に推定
-    
-    nfreq = len(freq_info['freq_wavenumber'])
-    intensities = np.zeros(nfreq)
-    
-    # 振動モードの対称性と原子の電気陰性度から強度を推定
-    mol = mf.mol
-    for i in range(nfreq):
-        # 基準振動座標
-        mode = freq_info['norm_mode'][:, i]
-        
-        # 簡易的な強度推定（実装の簡略化）
-        # C-H伸縮: 2800-3000 cm^-1, 中程度の強度
-        # O-H伸縮: 3200-3600 cm^-1, 強い強度
-        # C=O伸縮: 1680-1750 cm^-1, 非常に強い強度
-        freq = freq_info['freq_wavenumber'][i]
-        
-        if 2800 < freq < 3000:  # C-H stretch
-            intensities[i] = np.random.uniform(20, 50)
-        elif 3200 < freq < 3600:  # O-H stretch
-            intensities[i] = np.random.uniform(80, 150)
-        elif 1680 < freq < 1750:  # C=O stretch
-            intensities[i] = np.random.uniform(150, 300)
-        elif 1000 < freq < 1300:  # C-O stretch
-            intensities[i] = np.random.uniform(50, 100)
-        else:
-            intensities[i] = np.random.uniform(5, 30)
-    
-    return intensities
 
 def assign_vibration_mode(freq_cm, atoms):
     """振動モードを推定"""
