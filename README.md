@@ -14,7 +14,7 @@
 
 ## 🌟 主な機能
 
-- **Claude Code** + **Ollama** 統合によるローカルLLMエージェント
+- **Codex CLI** + **Ollama** 統合によるローカルLLMエージェント
 - **Serena-MCP** によるプログラミング支援
 - **RTX 50シリーズ最適化済み** PyTorch環境
 - **GPU加速分子計算**: gpu4pyscf-cuda12x対応
@@ -60,7 +60,7 @@ cd computational-research-rtx50
 
 # 必要なディレクトリ構造を作成
 mkdir -p workspace/{notebooks,scripts,data}
-mkdir -p config/{claude,serena,claude-bridge}
+mkdir -p config/{codex,serena}
 mkdir -p datasets models logs notebooks
 ```
 
@@ -213,7 +213,7 @@ if compounds:
     view.show()
 ```
 
-### 自然言語でのコード操作 (Claude + Ollama)
+### 自然言語でのコード操作 (Codex CLI + Ollama)
 
 この環境には、自然言語（日本語・英語）でコードの生成、編集、ファイル操作などを行える対話型AIエージェントが統合されています。
 
@@ -222,7 +222,7 @@ if compounds:
 コンテナが起動している状態で、ホストのターミナルから以下のコマンドを実行します。
 
 ```bash
-docker exec -it comp-chem-ml-env claude
+docker exec -it comp-chem-ml-env codex
 ```
 
 これにより、コンテナ内で対話型のプロンプトが起動します。
@@ -251,7 +251,7 @@ docker exec -it comp-chem-ml-env claude
 
 #### 仕組み
 
-この機能は、`@anthropic-ai/claude-code`ツールをフロントエンドとし、バックエンドではホストマシンで稼働しているOllamaに接続して言語モデル（例：`gpt-oss-20b`）を利用します。コンテナ内の`claude-bridge`サービスがこの連携を中継しています。
+この機能は、`@openai/codex`ツールをフロントエンドとし、バックエンドではホストマシンで稼働しているOllamaに接続して言語モデル（例：`gpt-oss:20b`）を利用します。この連携はコンテナ内の`/root/.codex/config.toml`ファイルで設定されています。
 
 終了するには `exit` と入力するか、`Ctrl+D` を押してください。
 
