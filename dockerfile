@@ -200,8 +200,8 @@ model = "gpt-oss:20b"
 [model_providers.ollama]
 name = "Ollama"
 # This should point to your Ollama server's API endpoint.
-# The value is taken from the OLLAMA_API_BASE env var in the original dockerfile.
-base_url = "http://host.docker.internal:11434/v1"
+# It uses the service name `ollama` on the shared Docker network.
+base_url = "http://ollama:11434/v1"
 # Ollama does not require an API key.
 api_key_env = ""
 
