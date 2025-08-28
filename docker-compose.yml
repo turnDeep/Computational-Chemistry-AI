@@ -1,7 +1,7 @@
 # ================================================
 # RTX 50シリーズ（5090/5070 Ti等）対応版
 # CUDA 12.8 + PyTorch Nightly使用
-# OpenAI API互換モードでclaude-bridge使用
+# Codex CLI と Ollama を連携
 # ================================================
 
 services:
@@ -24,7 +24,7 @@ services:
               count: all
               capabilities: [gpu]
     
-    # 環境変数（RTX 50シリーズ最適化 + OpenAI互換モード）
+    # 環境変数（RTX 50シリーズ最適化 + Ollama連携）
     environment:
       # GPU設定
       - NVIDIA_VISIBLE_DEVICES=all
@@ -34,15 +34,14 @@ services:
       - CUDA_LAUNCH_BLOCKING=0  # パフォーマンス最適化
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       
-      # Ollama設定（OpenAI互換エンドポイント）
+      # Ollama設定
       - OLLAMA_HOST=http://host.docker.internal:11434
       - OLLAMA_API_BASE=http://host.docker.internal:11434/v1
       - OLLAMA_MODEL=gpt-oss:20b
-      - OPENAI_API_KEY=dummy  # ダミーキー（Ollamaには不要だが、claude-bridgeが要求）
+      - OPENAI_API_KEY=dummy  # Codexが要求する場合があるため残す
       
       # サービス設定
       - JUPYTER_TOKEN=research2025  # 変更推奨
-      - CLAUDE_BRIDGE_PORT=8080
       - MCP_SERVER_PORT=9121
       
       # Python設定
@@ -57,7 +56,6 @@ services:
     
     # ポートマッピング
     ports:
-      - "8080:8080"    # Claude-bridge
       - "8888:8888"    # JupyterLab
       - "9121:9121"    # Serena-MCP SSE
       - "9122:9122"    # Serena Dashboard
@@ -68,9 +66,8 @@ services:
       - ./workspace:/workspace
       
       # 設定ファイル（永続化）
-      - ./config/claude:/root/.claude
+      - ./config/codex:/root/.codex
       - ./config/serena:/root/.serena
-      - ./config/claude-bridge:/root/.claude-bridge
       
       # データセット用
       - ./datasets:/datasets
