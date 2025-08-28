@@ -1,13 +1,13 @@
 # ================================================
 # RTX 50シリーズ（Blackwell sm_120）対応版
 # CUDA 12.8 + PyTorch Nightlyビルドを使用
-# OpenAI API互換モードでclaude-bridge使用
+# Codex CLI と Ollama を連携
 # ================================================
 
 # CUDA 12.8 Ubuntu 22.04 ベースイメージ（Blackwell対応）
 FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
 
-# 環境変数設定（sm_120対応 + OpenAI互換モード）
+# 環境変数設定（sm_120対応 + Ollama連携）
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,7 +18,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     OLLAMA_API_BASE=http://host.docker.internal:11434/v1 \
     OLLAMA_MODEL=gpt-oss:20b \
     OPENAI_API_KEY=dummy \
-    CLAUDE_BRIDGE_PORT=8080 \
     MCP_SERVER_PORT=9121 \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
@@ -149,25 +148,16 @@ RUN pip install --no-cache-dir --no-build-isolation \
     # Serena-MCP
     git+https://github.com/oraios/serena.git
 
-# Node.js最新化とClaude Code関連のインストール
+# Node.js最新化とCodex CLIのインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     npm install -g npm@latest
 
-# Claude Codeのインストール
-RUN npm install -g @anthropic-ai/claude-code
-
-# Claude-bridgeのインストール（npmパッケージ版）
-RUN npm install -g @mariozechner/claude-bridge
-
-# Ollama-MCP-Bridgeのセットアップ
-RUN git clone https://github.com/patruff/ollama-mcp-bridge.git /opt/ollama-mcp-bridge && \
-    cd /opt/ollama-mcp-bridge && \
-    npm install && \
-    npm run build || true
+# Codex CLIのインストール
+RUN npm install -g @openai/codex
 
 # 設定ディレクトリの作成
-RUN mkdir -p /root/.claude-bridge /workspace/logs /root/.config/claude /root/.serena
+RUN mkdir -p /workspace/logs /root/.codex /root/.serena
 
 # Serena-MCP設定
 RUN cat <<EOF > /root/.serena/serena_config.yml
@@ -196,28 +186,43 @@ settings:
   dashboard_port: 9122
 EOF
 
-# MCP統合設定
-RUN cat <<EOF > /root/.config/claude/config.json
-{
-  "mcpServers": {
-    "serena": {
-      "command": "serena",
-      "args": ["start-mcp-server", "--context", "agent", "--transport", "stdio"]
-    },
-    "ollama-bridge": {
-      "command": "node",
-      "args": ["/opt/ollama-mcp-bridge/dist/index.js"],
-      "env": {
-        "OLLAMA_HOST": "http://host.docker.internal:11434"
-      }
-    },
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
-    }
-  }
-}
+# Codex CLI設定
+RUN cat <<'EOF' > /root/.codex/config.toml
+# Default model provider to use.
+# This can be overridden with the --model-provider flag.
+model_provider = "ollama"
+
+# Default model to use.
+# This can be overridden with the --model flag.
+model = "gpt-oss:20b"
+
+# Configuration for the Ollama model provider.
+[model_providers.ollama]
+name = "Ollama"
+# This should point to your Ollama server's API endpoint.
+# The value is taken from the OLLAMA_API_BASE env var in the original dockerfile.
+base_url = "http://host.docker.internal:11434/v1"
+# Ollama does not require an API key.
+api_key_env = ""
+
+
+# Configuration for Model Context Protocol (MCP) servers.
+# These servers provide additional context to the model.
+[mcp_servers]
+
+# Serena-MCP server for advanced code understanding and manipulation.
+[mcp_servers.serena]
+# The command to start the serena MCP server.
+# It uses stdio for communication with the codex CLI.
+command = ["serena", "start-mcp-server", "--context", "agent", "--transport", "stdio"]
+
+# Filesystem MCP server to provide context from the local filesystem.
+[mcp_servers.filesystem]
+# The command to start the filesystem server.
+# It serves the content of the /workspace directory.
+command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
 EOF
+
 
 # GPU検証スクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/verify-gpu.py
@@ -359,10 +364,10 @@ RUN chmod +x /usr/local/bin/start-environment.sh
 ENV PYTHONPATH="/workspace:$PYTHONPATH"
 
 # ポート公開
-EXPOSE 8080 8888 9121 9122
+EXPOSE 8888 9121 9122
 
 # ボリュームマウントポイント
-VOLUME ["/workspace", "/root/.claude", "/root/.serena", "/workspace/logs"]
+VOLUME ["/workspace", "/root/.codex", "/root/.serena", "/workspace/logs"]
 
 # エントリーポイント
 ENTRYPOINT ["/usr/local/bin/start-environment.sh"]

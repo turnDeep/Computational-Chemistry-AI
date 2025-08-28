@@ -32,27 +32,8 @@ else
     echo "    2. ollama pull ${OLLAMA_MODEL:-gpt-oss:20b}"
 fi
 
-# Claude-bridgeの起動（OpenAI互換モード）
-echo "🌉 Claude-bridge（OpenAI互換モード）を起動中..."
-echo "   モデル: ${OLLAMA_MODEL:-gpt-oss:20b}"
-echo "   API Base: ${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1}"
-
-# Claude-bridgeを起動（バックグラウンド）
-export CLAUDE_BRIDGE_MODEL="${OLLAMA_MODEL:-gpt-oss:20b}"
-export CLAUDE_BRIDGE_API_BASE="${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1}"
-PORT=${CLAUDE_BRIDGE_PORT:-8080} OPENAI_API_KEY=dummy claude-bridge openai gpt-4-turbo \
-    > /workspace/logs/claude-bridge.log 2>&1 &
-BRIDGE_PID=$!
-echo "✅ Claude-bridge起動 (PID: $BRIDGE_PID)"
-
-# 起動確認（3秒待機）
-sleep 3
-if kill -0 $BRIDGE_PID 2>/dev/null; then
-    echo "✅ Claude-bridgeが正常に起動しました"
-else
-    echo "⚠️  Claude-bridgeの起動に失敗しました。ログを確認してください:"
-    echo "    docker exec comp-chem-ml-env cat /workspace/logs/claude-bridge.log"
-fi
+# Codex CLI はユーザーがフォアグラウンドで実行するため、ここでは何も起動しません。
+# 設定は /root/.codex/config.toml で管理されます。
 
 # Serena-MCPの起動（エラーを無視）
 echo "🎯 Serena-MCPサーバーを起動中..."
@@ -78,14 +59,14 @@ echo ""
 echo "📌 アクセス情報:"
 echo "  - JupyterLab: http://localhost:8888"
 echo "  - Token: ${JUPYTER_TOKEN:-research2025}"
-echo "  - Claude-bridge: http://localhost:8080"
+echo "  - Serena Dashboard: http://localhost:9122"
 echo ""
 echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
 echo "🔧 CUDA 12.8 + PyTorch Nightly"
 echo "🤖 Ollamaモデル: ${OLLAMA_MODEL:-gpt-oss:20b}"
 echo ""
-echo "💡 Claude Codeを使用するには:"
-echo "  docker exec -it comp-chem-ml-env claude"
+echo "💡 Codex CLI を使用するには:"
+echo "  docker exec -it comp-chem-ml-env codex"
 echo ""
 echo "📁 作業ディレクトリ: /workspace"
 echo "📝 ログディレクトリ: /workspace/logs"
