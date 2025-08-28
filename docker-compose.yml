@@ -92,7 +92,7 @@ services:
     # ネットワーク設定
     networks:
       - research-network
-      - default
+      - ollama-net
     
     # セキュリティ設定
     security_opt:
@@ -172,7 +172,7 @@ networks:
       config:
         - subnet: 172.20.0.0/24
           gateway: 172.20.0.1
-  default:
+  ollama-net:
     external: true
 
 # ボリューム定義
