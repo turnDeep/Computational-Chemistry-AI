@@ -35,12 +35,6 @@ fi
 # Codex CLI はユーザーがフォアグラウンドで実行するため、ここでは何も起動しません。
 # 設定は /root/.codex/config.toml で管理されます。
 
-# # Serena-MCPの起動
-# echo "🎯 Serenaを起動中（MCPサーバーとダッシュボード）..."
-# serena start > /workspace/logs/serena.log 2>&1 &
-# SERENA_PID=$!
-# echo "✅ Serena起動 (PID: $SERENA_PID)"
-
 # JupyterLabの起動
 echo "📊 JupyterLabを起動中..."
 jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
@@ -58,7 +52,6 @@ echo ""
 echo "📌 アクセス情報:"
 echo "  - JupyterLab: http://localhost:8888"
 echo "  - Token: ${JUPYTER_TOKEN:-research2025}"
-echo "  - Serena Dashboard: http://localhost:9122"
 echo ""
 echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
 echo "🔧 CUDA 12.8 + PyTorch Nightly"

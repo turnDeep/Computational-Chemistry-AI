@@ -18,7 +18,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     OLLAMA_API_BASE=http://host.docker.internal:11434/v1 \
     OLLAMA_MODEL=gpt-oss:20b \
     OPENAI_API_KEY=dummy \
-    # MCP_SERVER_PORT=9121 \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     TORCH_CUDA_ARCH_LIST="9.0;12.0" \
@@ -145,9 +144,6 @@ RUN pip install --no-cache-dir --no-build-isolation \
     mypy==1.9.0 \
     pre-commit==3.7.0 \
     \
-    # Serena-MCP
-    # git+https://github.com/oraios/serena.git
-
 # Node.js最新化とCodex CLIのインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
@@ -157,61 +153,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 RUN npm install -g @openai/codex
 
 # PATHの問題を回避するため、実行ファイルを/usr/local/binにシンボリックリンクする
-# RUN ln -s /opt/venv/bin/serena /usr/local/bin/serena && \
-#     ln -s /usr/bin/npx /usr/local/bin/npx
+RUN ln -s /usr/bin/npx /usr/local/bin/npx
 
 # 設定ディレクトリの作成
-# RUN mkdir -p /workspace/logs /root/.codex /root/.serena
+RUN mkdir -p /workspace/logs /root/.codex
 
-# Serena-MCP設定
-# RUN cat <<EOF > /root/.serena/serena_config.yml
-# contexts:
-#   agent:
-#     system_prompt: |
-#       あなたはSerena、計算化学と機械学習に特化した強力なコーディングエージェントです。
-#       あなたは科学技術計算のための包括的なPythonライブラリにアクセスできます。
-#       あなたは以下のツールを使って、ファイル操作、コード編集、コマンド実行ができます:
-#       - read_file: ファイルを読み込む
-#       - write_file: ファイルを作成・書き込みする
-#       - search_files: ファイルを検索する
-#       - execute_shell_command: シェルコマンドを実行する
-#       ユーザーの指示を正確に理解し、これらのツールを積極的に活用してタスクを実行してください。
-#       必ず日本語で応答してください。
-      
-# modes:
-#   research:
-#     description: "Research mode for computational chemistry"
-#     context: agent
-    
-# settings:
-#   workspace_dir: /workspace
-#   max_file_size: 10485760
-#   enable_web_dashboard: true
-#   dashboard_port: 9122
-# EOF
-
-# Codex CLIのインストール
-RUN npm install -g @openai/codex
-
-# --- MCPサーバー用のラッパースクリプトを作成 ---
-# これにより、codexからの呼び出し時に環境変数の問題を確実に回避する
-
-# 1. Serena用ラッパースクリプト
-# RUN echo '#!/bin/sh' > /usr/local/bin/run-serena-mcp.sh && \
-#     echo 'exec /opt/venv/bin/serena start-mcp-server --context agent --transport stdio' >> /usr/local/bin/run-serena-mcp.sh
-
-# 2. Filesystem用ラッパースクリプト
-# RUN echo '#!/bin/sh' > /usr/local/bin/run-filesystem-mcp.sh && \
-#     echo 'exec /usr/bin/npx -y @modelcontextprotocol/server-filesystem /workspace' >> /usr/local/bin/run-filesystem-mcp.sh
-
-# 3. スクリプトに実行権限を付与
-# RUN chmod +x /usr/local/bin/run-serena-mcp.sh && \
-#     chmod +x /usr/local/bin/run-filesystem-mcp.sh
-
-# 設定ディレクトリの作成
-# RUN mkdir -p /workspace/logs /root/.codex /root/.serena
-
-# ... (serena_config.yml の設定は変更なし) ...
 
 # Codex CLI設定 (ラッパースクリプトを呼び出す方式)
 RUN cat <<'EOF' > /root/.codex/config.toml
@@ -226,14 +172,6 @@ name = "Ollama"
 base_url = "http://ollama:11434/v1"
 api_key_env = ""
 
-# [mcp_servers]
-# # Serena-MCP: 多くのツールを提供しますが、プロンプトが長くなる原因になります。
-# [mcp_servers.serena]
-# command = "/usr/local/bin/run-serena-mcp.sh"
-#
-# # Filesystem-MCP: ラッパースクリプト経由で起動
-# [mcp_servers.filesystem]
-# command = "/usr/local/bin/run-filesystem-mcp.sh"
 EOF
 
 # GPU検証スクリプトの作成
