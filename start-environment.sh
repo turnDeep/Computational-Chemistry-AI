@@ -35,12 +35,11 @@ fi
 # Codex CLI はユーザーがフォアグラウンドで実行するため、ここでは何も起動しません。
 # 設定は /root/.codex/config.toml で管理されます。
 
-# Serena-MCPの起動（エラーを無視）
-echo "🎯 Serena-MCPサーバーを起動中..."
-serena start-mcp-server --context agent --transport sse --port ${MCP_SERVER_PORT:-9121} \
-    > /workspace/logs/serena-mcp.log 2>&1 &
+# Serena-MCPの起動
+echo "🎯 Serenaを起動中（MCPサーバーとダッシュボード）..."
+serena start > /workspace/logs/serena.log 2>&1 &
 SERENA_PID=$!
-echo "✅ Serena-MCP起動 (PID: $SERENA_PID) - エラーは無視されます"
+echo "✅ Serena起動 (PID: $SERENA_PID)"
 
 # JupyterLabの起動
 echo "📊 JupyterLabを起動中..."
