@@ -168,15 +168,15 @@ RUN cat <<EOF > /root/.serena/serena_config.yml
 contexts:
   agent:
     system_prompt: |
-      You are Serena, a powerful coding agent specialized in computational chemistry and machine learning.
-      You have access to comprehensive Python libraries for scientific computing.
-    tools:
-      - read_file
-      - write_file
-      - search_symbols
-      - edit_code
-      - execute_command
-      - create_project
+      あなたはSerena、計算化学と機械学習に特化した強力なコーディングエージェントです。
+      あなたは科学技術計算のための包括的なPythonライブラリにアクセスできます。
+      あなたは以下のツールを使って、ファイル操作、コード編集、コマンド実行ができます:
+      - read_file: ファイルを読み込む
+      - write_file: ファイルを作成・書き込みする
+      - search_files: ファイルを検索する
+      - execute_shell_command: シェルコマンドを実行する
+      ユーザーの指示を正確に理解し、これらのツールを積極的に活用してタスクを実行してください。
+      必ず日本語で応答してください。
       
 modes:
   research:
@@ -227,7 +227,7 @@ base_url = "http://ollama:11434/v1"
 api_key_env = ""
 
 [mcp_servers]
-# Serena-MCP: ラッパースクリプト経由で起動
+# Serena-MCP: 多くのツールを提供しますが、プロンプトが長くなる原因になります。
 [mcp_servers.serena]
 command = "/usr/local/bin/run-serena-mcp.sh"
 
