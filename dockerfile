@@ -156,6 +156,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 # Codex CLIのインストール
 RUN npm install -g @openai/codex
 
+# PATHの問題を回避するため、実行ファイルを/usr/local/binにシンボリックリンクする
+RUN ln -s /opt/venv/bin/serena /usr/local/bin/serena && \
+    ln -s /usr/bin/npx /usr/local/bin/npx
+
 # 設定ディレクトリの作成
 RUN mkdir -p /workspace/logs /root/.codex /root/.serena
 
@@ -186,40 +190,50 @@ settings:
   dashboard_port: 9122
 EOF
 
-# Codex CLI設定
+# Codex CLIのインストール
+RUN npm install -g @openai/codex
+
+# --- MCPサーバー用のラッパースクリプトを作成 ---
+# これにより、codexからの呼び出し時に環境変数の問題を確実に回避する
+
+# 1. Serena用ラッパースクリプト
+RUN echo '#!/bin/sh' > /usr/local/bin/run-serena-mcp.sh && \
+    echo 'exec /opt/venv/bin/serena start-mcp-server --context agent --transport stdio' >> /usr/local/bin/run-serena-mcp.sh
+
+# 2. Filesystem用ラッパースクリプト
+RUN echo '#!/bin/sh' > /usr/local/bin/run-filesystem-mcp.sh && \
+    echo 'exec /usr/bin/npx -y @modelcontextprotocol/server-filesystem /workspace' >> /usr/local/bin/run-filesystem-mcp.sh
+
+# 3. スクリプトに実行権限を付与
+RUN chmod +x /usr/local/bin/run-serena-mcp.sh && \
+    chmod +x /usr/local/bin/run-filesystem-mcp.sh
+
+# 設定ディレクトリの作成
+RUN mkdir -p /workspace/logs /root/.codex /root/.serena
+
+# ... (serena_config.yml の設定は変更なし) ...
+
+# Codex CLI設定 (ラッパースクリプトを呼び出す方式)
 RUN cat <<'EOF' > /root/.codex/config.toml
 # Default model provider to use.
-# This can be overridden with the --model-provider flag.
 model_provider = "ollama"
 
 # Default model to use.
-# This can be overridden with the --model flag.
 model = "gpt-oss:20b"
 
-# Configuration for the Ollama model provider.
 [model_providers.ollama]
 name = "Ollama"
-# This should point to your Ollama server's API endpoint.
-# It uses the service name `ollama` on the shared Docker network.
 base_url = "http://ollama:11434/v1"
-# Ollama does not require an API key.
 api_key_env = ""
 
-# Configuration for Model Context Protocol (MCP) servers.
-# These servers provide additional context to the model.
 [mcp_servers]
-
-# Serena-MCP server for advanced code understanding and manipulation.
+# Serena-MCP: ラッパースクリプト経由で起動
 [mcp_servers.serena]
-# The command to start the serena MCP server.
-# It uses stdio for communication with the codex CLI.
-command = "/opt/venv/bin/serena start-mcp-server --context agent --transport stdio"
+command = "/usr/local/bin/run-serena-mcp.sh"
 
-# Filesystem MCP server to provide context from the local filesystem.
+# Filesystem-MCP: ラッパースクリプト経由で起動
 [mcp_servers.filesystem]
-# The command to start the filesystem server.
-# It serves the content of the /workspace directory.
-command = "/usr/bin/npx -y @modelcontextprotocol/server-filesystem /workspace"
+command = "/usr/local/bin/run-filesystem-mcp.sh"
 EOF
 
 # GPU検証スクリプトの作成
@@ -362,7 +376,7 @@ RUN chmod +x /usr/local/bin/start-environment.sh
 ENV PYTHONPATH="/workspace:$PYTHONPATH"
 
 # ポート公開
-EXPOSE 8888 9121 9122
+EXPOSE 8888 9121 9122 9123
 
 # ボリュームマウントポイント
 VOLUME ["/workspace", "/root/.codex", "/root/.serena", "/workspace/logs"]
