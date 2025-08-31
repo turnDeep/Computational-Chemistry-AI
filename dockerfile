@@ -91,6 +91,7 @@ RUN pip install --no-cache-dir --no-build-isolation \
     ipython==8.23.0 \
     \
     # 機械学習フレームワーク（PyTorch以外）
+    dgl \
     tensorflow==2.16.1 \
     scikit-learn==1.4.2 \
     xgboost==2.0.3 \
