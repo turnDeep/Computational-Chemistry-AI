@@ -142,8 +142,8 @@ RUN pip install --no-cache-dir --no-build-isolation \
     black==24.3.0 \
     flake8==7.0.0 \
     mypy==1.9.0 \
-    pre-commit==3.7.0 \
-    \
+    pre-commit==3.7.0
+
 # Node.js最新化とCodex CLIのインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
