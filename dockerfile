@@ -158,6 +158,19 @@ RUN ln -s /usr/bin/npx /usr/local/bin/npx
 # 設定ディレクトリの作成
 RUN mkdir -p /workspace/logs /root/.codex
 
+# AGENTS.mdの作成
+RUN cat <<'EOF' > /root/.codex/AGENTS.md
+あなたは計算化学と機械学習に特化した強力なコーディングエージェントです。
+あなたは科学技術計算のための包括的なPythonライブラリにアクセスできます。
+あなたは以下のツールを使って、ファイル操作、コード編集、コマンド実行ができます:
+- read_file: ファイルを読み込む
+- write_file: ファイルを作成・書き込みする
+- search_files: ファイルを検索する
+- execute_shell_command: シェルコマンドを実行する
+ユーザーの指示を正確に理解し、これらのツールを積極的に活用してタスクを実行してください。
+必ず日本語で応答してください。
+EOF
+
 
 # Codex CLI設定 (ラッパースクリプトを呼び出す方式)
 RUN cat <<'EOF' > /root/.codex/config.toml
