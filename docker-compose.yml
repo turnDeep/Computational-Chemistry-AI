@@ -66,7 +66,6 @@ services:
       - ./workspace:/workspace
       
       # 設定ファイル（永続化）
-      - ./config/codex:/root/.codex
       - ./config/serena:/root/.serena
       
       # データセット用
