@@ -213,15 +213,14 @@ api_key_env = ""
 [mcp_servers.serena]
 # The command to start the serena MCP server.
 # It uses stdio for communication with the codex CLI.
-command = "serena start-mcp-server --context agent --transport stdio"
+command = "/opt/venv/bin/serena start-mcp-server --context agent --transport stdio"
 
 # Filesystem MCP server to provide context from the local filesystem.
 [mcp_servers.filesystem]
 # The command to start the filesystem server.
 # It serves the content of the /workspace directory.
-command = "npx -y @modelcontextprotocol/server-filesystem /workspace"
+command = "/usr/bin/npx -y @modelcontextprotocol/server-filesystem /workspace"
 EOF
-
 
 # GPU検証スクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/verify-gpu.py
