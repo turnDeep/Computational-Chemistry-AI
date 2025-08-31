@@ -57,8 +57,8 @@ services:
     # ポートマッピング
     ports:
       - "8888:8888"    # JupyterLab
-      - "9121:9121"    # Serena-MCP SSE
-      - "9122:9122"    # Serena Dashboard
+      # - "9121:9121"    # Serena-MCP SSE
+      # - "9122:9122"    # Serena Dashboard
     
     # ボリュームマウント
     volumes:
@@ -66,7 +66,7 @@ services:
       - ./workspace:/workspace
       
       # 設定ファイル（永続化）
-      - ./config/serena:/root/.serena
+      # - ./config/serena:/root/.serena
       
       # データセット用
       - ./datasets:/datasets
