@@ -205,7 +205,6 @@ base_url = "http://ollama:11434/v1"
 # Ollama does not require an API key.
 api_key_env = ""
 
-
 # Configuration for Model Context Protocol (MCP) servers.
 # These servers provide additional context to the model.
 [mcp_servers]
@@ -214,13 +213,13 @@ api_key_env = ""
 [mcp_servers.serena]
 # The command to start the serena MCP server.
 # It uses stdio for communication with the codex CLI.
-command = ["serena", "start-mcp-server", "--context", "agent", "--transport", "stdio"]
+command = "serena start-mcp-server --context agent --transport stdio"
 
 # Filesystem MCP server to provide context from the local filesystem.
 [mcp_servers.filesystem]
 # The command to start the filesystem server.
 # It serves the content of the /workspace directory.
-command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+command = "npx -y @modelcontextprotocol/server-filesystem /workspace"
 EOF
 
 
