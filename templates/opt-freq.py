@@ -16,6 +16,11 @@ from pyscf.hessian import thermo
 from tqdm import tqdm
 import time
 import warnings
+try:
+    import gpu4pyscf
+    warnings.warn("gpu4pyscf aavailable.")
+except ImportError:
+    warnings.warn("gpu4pyscf not available.")
 warnings.filterwarnings('ignore')
 
 def smiles_to_xyz(smiles):
@@ -98,6 +103,7 @@ def main():
     parser.add_argument('--basis', type=str, default='6-31+G**', help='基底関数')
     parser.add_argument('--charge', type=int, default=0, help='電荷')
     parser.add_argument('--spin', type=int, default=0, help='スピン多重度-1')
+    parser.add_argument('--use-gpu', action='store_true', help='GPU加速を使用')
     args = parser.parse_args()
     
     print("="*60)
@@ -105,6 +111,8 @@ def main():
     print("="*60)
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
+    if args.use_gpu:
+        print("GPU acceleration enabled.")
     
     with tqdm(total=5, desc="Overall Progress") as pbar:
         pbar.set_description("[1/5] 初期3D構造生成")
@@ -124,12 +132,16 @@ def main():
         pbar.set_description("[3/5] 構造最適化実行中")
         mf = dft.RKS(mol)
         mf.xc = 'B3LYP'
+        if args.use_gpu:
+            mf = mf.to_gpu()
         mf.kernel()
         e_init = mf.e_tot
         print(f"初期エネルギー: {e_init:.6f} Hartree")
         mol_opt = optimize(mf, maxsteps=50)
         mf_opt = dft.RKS(mol_opt)
         mf_opt.xc = 'B3LYP'
+        if args.use_gpu:
+            mf_opt = mf_opt.to_gpu()
         e_opt = mf_opt.kernel()
         print(f"最適化エネルギー: {e_opt:.6f} Hartree")
         print(f"エネルギー変化: {(e_opt - e_init)*627.509:.4f} kcal/mol")
@@ -143,6 +155,8 @@ def main():
         pbar.set_description("[4/5] 振動数解析実行中")
         from pyscf import hessian
         h = hessian.rks.Hessian(mf_opt)
+        if args.use_gpu:
+            h = h.to_gpu()
         hess = h.kernel()
         freq_info = thermo.harmonic_analysis(mol_opt, hess)
         frequencies = freq_info['freq_wavenumber']
