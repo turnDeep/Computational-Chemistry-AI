@@ -219,15 +219,15 @@ def main():
         pbar.update(1)
 
         pbar.set_description("[5/5] 熱力学的性質の計算")
-        # thermo.thermo()は辞書を返す
+        # thermo.thermo()は辞書を返し、その値は貢献成分のリスト [合計, 電子, 並進, 回転, 振動]
         thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325)
         
-        # 辞書のキーでアクセス
-        zpe = thermo_results['ZPE']
-        e_tot = thermo_results['E_tot']
-        h_tot = thermo_results['H_tot']
-        g_tot = thermo_results['G_tot']
-        s_tot = thermo_results['S_tot']
+        # 辞書のキーで値(リスト)を取得し、その先頭要素(合計値)を取り出す
+        zpe = thermo_results['ZPE'][0]
+        e_tot = thermo_results['E_tot'][0]
+        h_tot = thermo_results['H_tot'][0]
+        g_tot = thermo_results['G_tot'][0]
+        s_tot = thermo_results['S_tot'][0]
         
         print(f"ゼロ点エネルギー: {zpe*627.509:.3f} kcal/mol")
         print(f"エンタルピー: {h_tot:.6f} Hartree")
