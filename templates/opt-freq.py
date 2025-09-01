@@ -13,6 +13,8 @@ from rdkit.Chem import AllChem
 from pyscf import gto, dft
 from pyscf.geomopt.geometric_solver import optimize
 from pyscf.hessian import thermo
+from tqdm import tqdm
+import time
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -89,6 +91,7 @@ def visualize_molecule(atoms, coords, title=""):
     return fig
 
 def main():
+    start_time = time.time()
     # コマンドライン引数の解析
     parser = argparse.ArgumentParser(description='構造最適化と振動数計算')
     parser.add_argument('--smiles', type=str, required=True, help='分子のSMILES')
@@ -103,93 +106,69 @@ def main():
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
     
-    # Step 1: 初期構造生成
-    print("\n[1] 初期3D構造生成...")
-    atoms, init_coords = smiles_to_xyz(args.smiles)
-    mol_rdkit = Chem.MolFromSmiles(args.smiles)
-    formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
-    print(f"分子式: {formula}")
-    print(f"原子数: {len(atoms)}")
-    
-    # 初期構造の可視化
-    fig1 = visualize_molecule(atoms, init_coords, f"{formula} - 初期構造")
-    plt.savefig(f"{formula}_initial.png", dpi=150, bbox_inches='tight')
-    print(f"初期構造を {formula}_initial.png に保存")
-    
-    # Step 2: PySCF分子作成
-    print("\n[2] PySCF分子オブジェクト作成...")
-    mol = create_mol(atoms, init_coords, args.basis, args.charge, args.spin)
-    print(f"電子数: {mol.nelectron}")
-    print(f"基底関数数: {mol.nao}")
-    
-    # Step 3: 構造最適化
-    print("\n[3] 構造最適化実行中...")
-    mf = dft.RKS(mol)
-    mf.xc = 'B3LYP'
-    mf.kernel()
-    e_init = mf.e_tot
-    print(f"初期エネルギー: {e_init:.6f} Hartree")
-    
-    # geomeTRICで最適化
-    mol_opt = optimize(mf, maxsteps=50)
-    
-    # 最適化後の計算
-    mf_opt = dft.RKS(mol_opt)
-    mf_opt.xc = 'B3LYP'
-    e_opt = mf_opt.kernel()
-    print(f"最適化エネルギー: {e_opt:.6f} Hartree")
-    print(f"エネルギー変化: {(e_opt - e_init)*627.509:.4f} kcal/mol")
-    
-    # 最適化構造の取得（Bohr -> Angstrom）
-    opt_coords = mol_opt.atom_coords() * 0.529177
-    
-    # 最適化構造の可視化
-    fig2 = visualize_molecule(atoms, opt_coords, f"{formula} - 最適化構造")
-    plt.savefig(f"{formula}_optimized.png", dpi=150, bbox_inches='tight')
-    print(f"最適化構造を {formula}_optimized.png に保存")
-    
-    # RMSD計算
-    rmsd = np.sqrt(np.mean(np.sum((init_coords - opt_coords)**2, axis=1)))
-    print(f"構造変化RMSD: {rmsd:.4f} Å")
-    
-    # Step 4: 振動数解析
-    print("\n[4] 振動数解析実行中...")
-    from pyscf import hessian
-    h = hessian.RKS(mf_opt)
-    hess = h.kernel()
-    
-    # 振動解析
-    freq_info = thermo.harmonic_analysis(mol_opt, hess)
-    frequencies = freq_info['freq_wavenumber']
-    
-    # 虚振動チェック
-    n_imaginary = np.sum(frequencies < 0)
-    print(f"\n虚振動数: {n_imaginary}個")
-    if n_imaginary == 0:
-        print("✅ 安定構造（極小点）")
-    else:
-        print("⚠️ 遷移状態または鞍点")
-    
-    # 振動数表示
-    print("\n振動数 (cm⁻¹):")
-    real_freq = frequencies[frequencies >= 0]
-    if len(real_freq) > 0:
-        print(f"最低振動数: {real_freq[0]:.2f} cm⁻¹")
-        print(f"最高振動数: {real_freq[-1]:.2f} cm⁻¹")
-    
-    # Step 5: 熱力学的性質（298.15 K, 1 atm）
-    print("\n[5] 熱力学的性質 (298.15 K)...")
-    thermo_results = thermo.thermo(freq_info['freq_au'], 298.15, pressure=101325)
-    
-    zpe = thermo_results[0]
-    enthalpy = e_opt + thermo_results[2]
-    gibbs = e_opt + thermo_results[3]
-    entropy = thermo_results[4]
-    
-    print(f"ゼロ点エネルギー: {zpe*627.509:.3f} kcal/mol")
-    print(f"エンタルピー: {enthalpy:.6f} Hartree")
-    print(f"ギブズ自由エネルギー: {gibbs:.6f} Hartree")
-    print(f"エントロピー: {entropy*1000:.2f} cal/(mol·K)")
+    with tqdm(total=5, desc="Overall Progress") as pbar:
+        pbar.set_description("[1/5] 初期3D構造生成")
+        atoms, init_coords = smiles_to_xyz(args.smiles)
+        mol_rdkit = Chem.MolFromSmiles(args.smiles)
+        formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
+        print(f"分子式: {formula}, 原子数: {len(atoms)}")
+        fig1 = visualize_molecule(atoms, init_coords, f"{formula} - 初期構造")
+        plt.savefig(f"{formula}_initial.png", dpi=150, bbox_inches='tight')
+        pbar.update(1)
+
+        pbar.set_description("[2/5] PySCF分子オブジェクト作成")
+        mol = create_mol(atoms, init_coords, args.basis, args.charge, args.spin)
+        print(f"電子数: {mol.nelectron}, 基底関数数: {mol.nao}")
+        pbar.update(1)
+
+        pbar.set_description("[3/5] 構造最適化実行中")
+        mf = dft.RKS(mol)
+        mf.xc = 'B3LYP'
+        mf.kernel()
+        e_init = mf.e_tot
+        print(f"初期エネルギー: {e_init:.6f} Hartree")
+        mol_opt = optimize(mf, maxsteps=50)
+        mf_opt = dft.RKS(mol_opt)
+        mf_opt.xc = 'B3LYP'
+        e_opt = mf_opt.kernel()
+        print(f"最適化エネルギー: {e_opt:.6f} Hartree")
+        print(f"エネルギー変化: {(e_opt - e_init)*627.509:.4f} kcal/mol")
+        opt_coords = mol_opt.atom_coords() * 0.529177
+        fig2 = visualize_molecule(atoms, opt_coords, f"{formula} - 最適化構造")
+        plt.savefig(f"{formula}_optimized.png", dpi=150, bbox_inches='tight')
+        rmsd = np.sqrt(np.mean(np.sum((init_coords - opt_coords)**2, axis=1)))
+        print(f"構造変化RMSD: {rmsd:.4f} Å")
+        pbar.update(1)
+
+        pbar.set_description("[4/5] 振動数解析実行中")
+        from pyscf import hessian
+        h = hessian.rks.Hessian(mf_opt)
+        hess = h.kernel()
+        freq_info = thermo.harmonic_analysis(mol_opt, hess)
+        frequencies = freq_info['freq_wavenumber']
+        n_imaginary = np.sum(frequencies < 0)
+        print(f"虚振動数: {n_imaginary}個")
+        if n_imaginary == 0:
+            print("✅ 安定構造（極小点）")
+        else:
+            print("⚠️ 遷移状態または鞍点")
+        real_freq = frequencies[frequencies >= 0]
+        if len(real_freq) > 0:
+            print(f"最低振動数: {real_freq[0]:.2f} cm⁻¹")
+            print(f"最高振動数: {real_freq[-1]:.2f} cm⁻¹")
+        pbar.update(1)
+
+        pbar.set_description("[5/5] 熱力学的性質の計算")
+        thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325.)
+        zpe = thermo_results['ZPE']
+        enthalpy = thermo_results['H_tot']
+        gibbs = thermo_results['G_tot']
+        entropy = thermo_results['S_tot']
+        print(f"ゼロ点エネルギー: {zpe[0]*627.509:.3f} kcal/mol")
+        print(f"エンタルピー: {enthalpy[0]:.6f} Hartree")
+        print(f"ギブズ自由エネルギー: {gibbs[0]:.6f} Hartree")
+        print(f"エントロピー: {entropy[0]*1000:.2f} cal/(mol·K)")
+        pbar.update(1)
     
     # XYZファイル保存
     with open(f"{formula}_optimized.xyz", 'w') as f:
@@ -210,8 +189,8 @@ def main():
         f.write(f"Energy Change: {(e_opt - e_init)*627.509:.4f} kcal/mol\n")
         f.write(f"RMSD: {rmsd:.4f} Å\n")
         f.write(f"Imaginary Frequencies: {n_imaginary}\n")
-        f.write(f"ZPE: {zpe*627.509:.3f} kcal/mol\n")
-        f.write(f"Gibbs Energy (298K): {gibbs:.6f} Hartree\n")
+        f.write(f"ZPE: {zpe[0]*627.509:.3f} kcal/mol\n")
+        f.write(f"Gibbs Energy (298K): {gibbs[0]:.6f} Hartree\n")
     
     print(f"サマリーを {formula}_summary.txt に保存")
     
@@ -245,6 +224,10 @@ def main():
     print("計算完了！")
     print("="*60)
     
+    end_time = time.time()
+    duration = end_time - start_time
+    print(f"実行時間: {duration:.2f}秒")
+
     # matplotlibウィンドウを表示
     plt.show()
 
