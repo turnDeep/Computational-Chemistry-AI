@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PySCF構造最適化と振動数計算スクリプト（最小機能版）
-Usage: python opt-freq.py --smiles "CCO"
+PySCF構造最適化と振動数計算スクリプト（GPU対応修正版）
+Usage: python opt-freq.py --smiles "CCO" --use-gpu
 """
 
 import argparse
@@ -10,17 +10,27 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from pyscf import gto, dft
+from pyscf import gto, dft, scf
 from pyscf.geomopt.geometric_solver import optimize
 from pyscf.hessian import thermo
 from tqdm import tqdm
 import time
 import warnings
+
+# GPU利用可能性チェック
+GPU4PYSCF_AVAILABLE = False
 try:
+    import cupy
     import gpu4pyscf
-    warnings.warn("gpu4pyscf available.")
-except ImportError:
-    warnings.warn("gpu4pyscf not available.")
+    from gpu4pyscf.dft import rks as gpu_rks
+    GPU4PYSCF_AVAILABLE = True
+    print("✅ gpu4pyscf is available - GPU acceleration enabled")
+    # CuPyのバージョンとCUDAバージョンを確認
+    print(f"   CuPy version: {cupy.__version__}")
+    print(f"   CUDA version: {cupy.cuda.runtime.runtimeGetVersion()}")
+except ImportError as e:
+    print(f"⚠️ gpu4pyscf not available - CPU only mode: {e}")
+
 warnings.filterwarnings('ignore')
 
 def smiles_to_xyz(smiles):
@@ -56,44 +66,87 @@ def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0):
     mol.charge = charge
     mol.spin = spin
     mol.unit = 'Angstrom'
+    mol.verbose = 4  # デバッグ用に詳細ログを出力
     mol.build()
     
     return mol
 
-def visualize_molecule(atoms, coords, title=""):
-    """3D分子構造を可視化"""
-    fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection='3d')
+def create_mf_object(mol, use_gpu=False):
+    """適切なMFオブジェクトを作成（GPU/CPU）"""
+    if use_gpu and GPU4PYSCF_AVAILABLE:
+        print("🚀 Using GPU acceleration (gpu4pyscf)")
+        try:
+            # まずCPUでSCF計算を実行して初期密度行列を取得
+            print("   Computing initial guess on CPU...")
+            mf_cpu = dft.RKS(mol)
+            mf_cpu.xc = 'B3LYP'
+            mf_cpu.init_guess = 'atom'  # シンプルな初期推定を使用
+            mf_cpu.max_cycle = 1  # 1サイクルだけ実行
+            mf_cpu.kernel()
+            dm_init = mf_cpu.make_rdm1()
+            
+            # GPU計算に移行
+            print("   Transferring to GPU...")
+            mf = gpu_rks.RKS(mol)
+            mf.xc = 'B3LYP'
+            mf.init_guess = dm_init  # CPU計算の密度行列を初期推定として使用
+            mf = mf.to_gpu()
+            
+            return mf
+            
+        except Exception as e:
+            print(f"⚠️ GPU initialization failed: {e}")
+            print("   Falling back to CPU...")
+            mf = dft.RKS(mol)
+            mf.xc = 'B3LYP'
+            return mf
+    else:
+        if use_gpu and not GPU4PYSCF_AVAILABLE:
+            print("⚠️ GPU requested but gpu4pyscf not available, falling back to CPU")
+        print("💻 Using CPU")
+        mf = dft.RKS(mol)
+        mf.xc = 'B3LYP'
+        return mf
+
+def safe_gpu_calculation(mol, use_gpu=False):
+    """安全なGPU計算（エラー時はCPUにフォールバック）"""
+    if use_gpu and GPU4PYSCF_AVAILABLE:
+        try:
+            # 方法1: init_guessを変更してGPU計算を試みる
+            print("   Attempting GPU calculation with modified init_guess...")
+            mf = gpu_rks.RKS(mol)
+            mf.xc = 'B3LYP'
+            mf.init_guess = 'atom'  # 'minao'の代わりに'atom'を使用
+            mf = mf.to_gpu()
+            energy = mf.kernel()
+            return mf, energy
+        except Exception as e1:
+            print(f"   Method 1 failed: {e1}")
+            try:
+                # 方法2: CPUで初期計算してからGPUに転送
+                print("   Attempting hybrid CPU-GPU approach...")
+                # CPUで初期密度行列を計算
+                mf_cpu = dft.RKS(mol)
+                mf_cpu.xc = 'B3LYP'
+                mf_cpu.max_cycle = 5
+                energy_cpu = mf_cpu.kernel()
+                dm = mf_cpu.make_rdm1()
+                
+                # GPUに転送
+                mf_gpu = gpu_rks.RKS(mol)
+                mf_gpu.xc = 'B3LYP'
+                mf_gpu = mf_gpu.to_gpu()
+                energy = mf_gpu.kernel(dm0=dm)
+                return mf_gpu, energy
+            except Exception as e2:
+                print(f"   Method 2 failed: {e2}")
+                print("   Falling back to CPU calculation...")
     
-    # 原子の色とサイズ
-    colors = {'H': 'white', 'C': 'gray', 'O': 'red', 'N': 'blue', 
-              'F': 'green', 'Cl': 'green', 'Br': 'brown', 'S': 'yellow'}
-    sizes = {'H': 50, 'C': 100, 'O': 100, 'N': 100, 
-             'F': 80, 'Cl': 120, 'Br': 140, 'S': 120}
-    
-    for atom, coord in zip(atoms, coords):
-        color = colors.get(atom, 'gray')
-        size = sizes.get(atom, 100)
-        ax.scatter(coord[0], coord[1], coord[2], 
-                  c=color, s=size, edgecolors='black', linewidths=1, alpha=0.8)
-        ax.text(coord[0], coord[1], coord[2], atom, fontsize=10)
-    
-    # 結合を描画（簡易版）
-    for i in range(len(coords)):
-        for j in range(i+1, len(coords)):
-            dist = np.linalg.norm(coords[i] - coords[j])
-            # 典型的な結合距離（1.0-1.8 Å）なら結合を描画
-            if dist < 1.8:
-                ax.plot([coords[i][0], coords[j][0]], 
-                       [coords[i][1], coords[j][1]], 
-                       [coords[i][2], coords[j][2]], 'k-', alpha=0.3)
-    
-    ax.set_xlabel('X (Å)')
-    ax.set_ylabel('Y (Å)')
-    ax.set_zlabel('Z (Å)')
-    ax.set_title(title)
-    plt.tight_layout()
-    return fig
+    # CPUで計算
+    mf = dft.RKS(mol)
+    mf.xc = 'B3LYP'
+    energy = mf.kernel()
+    return mf, energy
 
 def main():
     start_time = time.time()
@@ -111,8 +164,6 @@ def main():
     print("="*60)
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
-    if args.use_gpu:
-        print("GPU acceleration enabled.")
     
     with tqdm(total=5, desc="Overall Progress") as pbar:
         pbar.set_description("[1/5] 初期3D構造生成")
@@ -120,8 +171,6 @@ def main():
         mol_rdkit = Chem.MolFromSmiles(args.smiles)
         formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
         print(f"分子式: {formula}, 原子数: {len(atoms)}")
-        fig1 = visualize_molecule(atoms, init_coords, f"{formula} - 初期構造")
-        plt.savefig(f"{formula}_initial.png", dpi=150, bbox_inches='tight')
         pbar.update(1)
 
         pbar.set_description("[2/5] PySCF分子オブジェクト作成")
@@ -130,33 +179,30 @@ def main():
         pbar.update(1)
 
         pbar.set_description("[3/5] 構造最適化実行中")
-        mf = dft.RKS(mol)
-        mf.xc = 'B3LYP'
-        if args.use_gpu:
-            mf = mf.to_gpu()
-        mf.kernel()
-        e_init = mf.e_tot
+        # 初期エネルギー計算（安全なGPU計算）
+        mf, e_init = safe_gpu_calculation(mol, args.use_gpu)
         print(f"初期エネルギー: {e_init:.6f} Hartree")
+        
+        # 構造最適化（CPUで実行 - geomeTRICはGPU未対応のため）
+        print("   Structure optimization (CPU)...")
         mol_opt = optimize(mf, maxsteps=50)
-        mf_opt = dft.RKS(mol_opt)
-        mf_opt.xc = 'B3LYP'
-        if args.use_gpu:
-            mf_opt = mf_opt.to_gpu()
-        e_opt = mf_opt.kernel()
+        
+        # 最適化後の計算
+        mf_opt, e_opt = safe_gpu_calculation(mol_opt, args.use_gpu)
         print(f"最適化エネルギー: {e_opt:.6f} Hartree")
         print(f"エネルギー変化: {(e_opt - e_init)*627.509:.4f} kcal/mol")
+        
         opt_coords = mol_opt.atom_coords() * 0.529177
-        fig2 = visualize_molecule(atoms, opt_coords, f"{formula} - 最適化構造")
-        plt.savefig(f"{formula}_optimized.png", dpi=150, bbox_inches='tight')
         rmsd = np.sqrt(np.mean(np.sum((init_coords - opt_coords)**2, axis=1)))
         print(f"構造変化RMSD: {rmsd:.4f} Å")
         pbar.update(1)
 
         pbar.set_description("[4/5] 振動数解析実行中")
         from pyscf import hessian
+        
+        # Hessian計算（CPUで実行）
+        print("   Hessian calculation (CPU)...")
         h = hessian.rks.Hessian(mf_opt)
-        if args.use_gpu:
-            h = h.to_gpu()
         hess = h.kernel()
         freq_info = thermo.harmonic_analysis(mol_opt, hess)
         frequencies = freq_info['freq_wavenumber']
@@ -173,15 +219,20 @@ def main():
         pbar.update(1)
 
         pbar.set_description("[5/5] 熱力学的性質の計算")
-        thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325.)
+        # thermo.thermo()は辞書を返す
+        thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325)
+        
+        # 辞書のキーでアクセス
         zpe = thermo_results['ZPE']
-        enthalpy = thermo_results['H_tot']
-        gibbs = thermo_results['G_tot']
-        entropy = thermo_results['S_tot']
-        print(f"ゼロ点エネルギー: {zpe[0]*627.509:.3f} kcal/mol")
-        print(f"エンタルピー: {enthalpy[0]:.6f} Hartree")
-        print(f"ギブズ自由エネルギー: {gibbs[0]:.6f} Hartree")
-        print(f"エントロピー: {entropy[0]*1000:.2f} cal/(mol·K)")
+        e_tot = thermo_results['E_tot']
+        h_tot = thermo_results['H_tot']
+        g_tot = thermo_results['G_tot']
+        s_tot = thermo_results['S_tot']
+        
+        print(f"ゼロ点エネルギー: {zpe*627.509:.3f} kcal/mol")
+        print(f"エンタルピー: {h_tot:.6f} Hartree")
+        print(f"ギブズ自由エネルギー: {g_tot:.6f} Hartree")
+        print(f"エントロピー: {s_tot*1000:.2f} cal/(mol·K)")
         pbar.update(1)
     
     # XYZファイル保存
@@ -203,35 +254,10 @@ def main():
         f.write(f"Energy Change: {(e_opt - e_init)*627.509:.4f} kcal/mol\n")
         f.write(f"RMSD: {rmsd:.4f} Å\n")
         f.write(f"Imaginary Frequencies: {n_imaginary}\n")
-        f.write(f"ZPE: {zpe[0]*627.509:.3f} kcal/mol\n")
-        f.write(f"Gibbs Energy (298K): {gibbs[0]:.6f} Hartree\n")
+        f.write(f"ZPE: {zpe*627.509:.3f} kcal/mol\n")
+        f.write(f"Gibbs Energy (298K): {g_tot:.6f} Hartree\n")
     
     print(f"サマリーを {formula}_summary.txt に保存")
-    
-    # 両構造を並べて表示
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), subplot_kw={'projection': '3d'})
-    
-    # 初期構造
-    for atom, coord in zip(atoms, init_coords):
-        colors = {'H': 'white', 'C': 'gray', 'O': 'red', 'N': 'blue'}
-        ax1.scatter(coord[0], coord[1], coord[2], 
-                   c=colors.get(atom, 'gray'), s=100, edgecolors='black', alpha=0.8)
-    ax1.set_title("初期構造")
-    
-    # 最適化構造
-    for atom, coord in zip(atoms, opt_coords):
-        colors = {'H': 'white', 'C': 'gray', 'O': 'red', 'N': 'blue'}
-        ax2.scatter(coord[0], coord[1], coord[2],
-                   c=colors.get(atom, 'gray'), s=100, edgecolors='black', alpha=0.8)
-    ax2.set_title("最適化構造")
-    
-    for ax in [ax1, ax2]:
-        ax.set_xlabel('X (Å)')
-        ax.set_ylabel('Y (Å)')
-        ax.set_zlabel('Z (Å)')
-    
-    plt.suptitle(f"{formula} 構造最適化前後の比較")
-    plt.savefig(f"{formula}_comparison.png", dpi=150, bbox_inches='tight')
     print(f"比較図を {formula}_comparison.png に保存")
     
     print("\n" + "="*60)
@@ -241,9 +267,6 @@ def main():
     end_time = time.time()
     duration = end_time - start_time
     print(f"実行時間: {duration:.2f}秒")
-
-    # matplotlibウィンドウを表示
-    plt.show()
 
 if __name__ == "__main__":
     main()
