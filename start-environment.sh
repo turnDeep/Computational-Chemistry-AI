@@ -37,7 +37,8 @@ fi
 
 # JupyterLabの起動
 echo "📊 JupyterLabを起動中..."
-jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
+# 仮想環境のPythonを直接指定してJupyterLabを起動する
+/opt/venv/bin/python -m jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
     --NotebookApp.token="${JUPYTER_TOKEN:-research2025}" \
     > /workspace/logs/jupyter.log 2>&1 &
 JUPYTER_PID=$!
