@@ -57,8 +57,17 @@ RUN apt-get update && \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
-# Python仮想環境の作成と有効化
+# Python仮想環境の作成
 RUN python3.11 -m venv /opt/venv
+
+# システムのデフォルトPythonを仮想環境のPythonに強制的に置き換える
+# これにより、いかなる状況でも仮想環境が使われることを保証する
+RUN ln -sf /opt/venv/bin/python /usr/bin/python && \
+    ln -sf /opt/venv/bin/python /usr/bin/python3 && \
+    ln -sf /opt/venv/bin/pip /usr/bin/pip && \
+    ln -sf /opt/venv/bin/pip /usr/bin/pip3
+
+# 仮想環境のパスをPATHの先頭に追加
 ENV PATH="/opt/venv/bin:$PATH"
 
 # ===================================================
@@ -91,7 +100,6 @@ RUN pip install --no-cache-dir --no-build-isolation \
     ipython==8.23.0 \
     \
     # 機械学習フレームワーク（PyTorch以外）
-    dgl \
     tensorflow==2.16.1 \
     scikit-learn==1.4.2 \
     xgboost==2.0.3 \
@@ -319,6 +327,9 @@ print("=" * 60)
 SCRIPT
 
 RUN chmod +x /usr/local/bin/test-gpu-chemistry.py
+
+# bashrcの設定: ターミナル起動時に自動で仮想環境を有効化
+RUN echo "source /opt/venv/bin/activate" >> /root/.bashrc
 
 # 起動スクリプトをコピー（外部ファイルから）
 COPY start-environment.sh /usr/local/bin/start-environment.sh
