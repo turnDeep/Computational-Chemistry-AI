@@ -18,7 +18,7 @@ import time
 import warnings
 try:
     import gpu4pyscf
-    warnings.warn("gpu4pyscf aavailable.")
+    warnings.warn("gpu4pyscf available.")
 except ImportError:
     warnings.warn("gpu4pyscf not available.")
 warnings.filterwarnings('ignore')
