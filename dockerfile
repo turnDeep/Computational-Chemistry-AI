@@ -83,7 +83,7 @@ RUN pip install --no-cache-dir --pre \
 # ===================================================
 RUN pip install --no-cache-dir six hatchling wheel
 
-RUN pip install --no-cache-dir --no-build-isolation \
+RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
     # CuPy for CUDA 12.x（GPU4PySCF用）
     cupy-cuda12x==13.4.1 \
     cutensor-cu12==2.2.0 \
