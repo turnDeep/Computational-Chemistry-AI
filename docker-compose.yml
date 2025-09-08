@@ -9,7 +9,7 @@ services:
   research-env:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
       args:
         - BUILDKIT_INLINE_CACHE=1
     container_name: comp-chem-ml-env
