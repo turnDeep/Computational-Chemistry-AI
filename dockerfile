@@ -120,7 +120,6 @@ RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
     mdanalysis==2.7.0 \
     mdtraj==1.10.0 \
     pyscf==2.8.0 \
-    gpu4pyscf-cuda12x==1.4.2 \
     geometric==1.1 \
     pubchempy==1.0.4 \
     py3Dmol==2.5.2 \
@@ -152,6 +151,22 @@ RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
     flake8==7.0.0 \
     mypy==1.9.0 \
     pre-commit==3.7.0
+
+# ===================================================
+# GPU4PySCFをソースからビルド (sm_90, sm_120対応)
+# ===================================================
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    git clone --depth 1 https://github.com/pyscf/gpu4pyscf.git /tmp/gpu4pyscf_build && \
+    cd /tmp/gpu4pyscf_build && \
+    cmake -B build -S gpu4pyscf/lib -DCUDA_ARCHITECTURES="90;120" -DBUILD_LIBXC=OFF && \
+    cd build && \
+    make -j$(nproc) && \
+    cd /tmp/gpu4pyscf_build && \
+    pip install . && \
+    cd / && \
+    rm -rf /tmp/gpu4pyscf_build && \
+    apt-get purge -y --auto-remove git && \
+    rm -rf /var/lib/apt/lists/*
 
 # Node.js最新化とCodex CLIのインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
