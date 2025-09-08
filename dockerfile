@@ -85,8 +85,8 @@ RUN pip install --no-cache-dir six hatchling wheel
 
 RUN pip install --no-cache-dir --no-build-isolation \
     # CuPy for CUDA 12.x（GPU4PySCF用）
-    cupy-cuda12x==13.6.0 \
-    cutensor-cu12 \
+    cupy-cuda12x==13.4.1 \
+    cutensor-cu12==2.2.0 \
     \
     # 基本的な科学計算ライブラリ (numpyバージョンを固定)
     numpy==1.26.4 \
