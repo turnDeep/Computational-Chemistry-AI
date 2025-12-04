@@ -1,8 +1,26 @@
 {
   "name": "Computational Chemistry ML Environment (RTX 50)",
-  "dockerComposeFile": "../docker-compose.yml",
-  "service": "research-env",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
   "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+  // GPU設定
+  "runArgs": [
+    "--gpus=all",
+    "--runtime=nvidia",
+    "--shm-size=32gb"
+  ],
+
+  // 追加のマウント
+  "mounts": [
+    "source=${localWorkspaceFolder}/datasets,target=/datasets,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/models,target=/models,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/logs,target=/workspace/logs,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/notebooks,target=/workspace/notebooks,type=bind,consistency=cached"
+  ],
 
   // コンテナ作成後に実行するコマンド
   "postCreateCommand": "python3 /usr/local/bin/verify-gpu.py",
@@ -74,7 +92,7 @@
   // コンテナ内で使用するユーザー
   "remoteUser": "root",
 
-  // ポートフォワーディング (docker-composeで定義済みだが、VS Code用に明示)
+  // ポートフォワーディング
   "forwardPorts": [8888],
   "portsAttributes": {
     "8888": {
