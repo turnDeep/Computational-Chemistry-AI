@@ -20,6 +20,9 @@
 ### 5. **溶媒効果計算（PCMモデル）** (`calculate_solvent_effect.py`)
 様々な溶媒中での安定性と溶媒和エネルギーの計算
 
+### 6. **結合解離エネルギー(BDE)計算** (`calculate_bde.py`)
+化合物の全結合のBDEを計算（BDE-db2準拠、M06-2X/def2-TZVP）
+
 ## 🚀 使用方法
 
 ### 基本的な使い方
@@ -111,6 +114,29 @@ python calculate_solvent_effect.py --smiles "O=C1C=CC(=O)C=C1" --compare-solvent
 # 水       78.4      -12.34           4.56
 # エタノール  24.6       -8.91           3.98
 # ベンゼン    2.3       -2.13           3.12
+```
+
+### 6. BDE計算
+
+```bash
+# エタノールの全結合のBDE計算（BDE-db2準拠）
+python calculate_bde.py --smiles "CCO" --use-gpu
+
+# 出力例:
+# 結合タイプ  平均BDE   最小BDE   最大BDE   個数
+# C-C         85.32     85.32     85.32      1
+# C-H         98.45     96.12    102.34      5
+# C-O         86.71     86.71     86.71      1
+# O-H        104.23    104.23    104.23      1
+#
+# 最弱結合: C(1)-H(4) = 96.12 kcal/mol
+# 最強結合: O(2)-H(8) = 104.23 kcal/mol
+
+# 酢酸のBDE計算（カルボン酸のO-H結合の解離）
+python calculate_bde.py --smiles "CC(=O)O" --method M06-2X --basis def2-TZVP
+
+# ベンゼンのBDE計算
+python calculate_bde.py --smiles "c1ccccc1" --use-gpu
 ```
 
 ## 💻 高度な使用例
@@ -298,6 +324,8 @@ python -c "import gpu4pyscf; print('OK')"
 
 - PySCF公式ドキュメント: https://pyscf.org/
 - GPU4PySCF: https://github.com/pyscf/gpu4pyscf
+- BDE-db: https://github.com/nsf-c-cas/BDE-db (290,664 BDE値)
+- BDE-db2: https://github.com/patonlab/bde-db2 (531,244 BDE値)
 - 量子化学の基礎理論については専門書を参照
 
 ## 🎯 今後の拡張予定
