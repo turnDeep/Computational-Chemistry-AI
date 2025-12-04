@@ -18,23 +18,6 @@ python3 -c "import pyscf, rdkit, pubchempy, py3Dmol; print('✅ 主要ライブ�
 # ログディレクトリ作成
 mkdir -p /workspace/logs
 
-# Ollamaの接続確認（OpenAI互換エンドポイント）
-echo "🔍 Ollama OpenAI互換エンドポイントの確認中..."
-if curl -s http://host.docker.internal:11434/v1/models > /dev/null 2>&1; then
-    echo "✅ Ollama OpenAI互換エンドポイントに接続成功"
-    # 利用可能なモデルの確認
-    echo "📋 利用可能なモデル:"
-    curl -s http://host.docker.internal:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | head -5 || echo "モデル一覧取得をスキップ"
-else
-    echo "⚠️  警告: Ollamaサーバーに接続できません。"
-    echo "    ホスト側で以下を実行してください:"
-    echo "    1. ollama serve"
-    echo "    2. ollama pull ${OLLAMA_MODEL:-gpt-oss:20b}"
-fi
-
-# Codex CLI はユーザーがフォアグラウンドで実行するため、ここでは何も起動しません。
-# 設定は /root/.codex/config.toml で管理されます。
-
 # JupyterLabの起動
 echo "📊 JupyterLabを起動中..."
 # 仮想環境のPythonを直接指定してJupyterLabを起動する
@@ -56,7 +39,6 @@ echo "  - Token: ${JUPYTER_TOKEN:-research2025}"
 echo ""
 echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
 echo "🔧 CUDA 12.8 + PyTorch Nightly"
-echo "🤖 Ollamaモデル: ${OLLAMA_MODEL:-gpt-oss:20b}"
 echo ""
 echo "💡 Codex CLI を使用するには:"
 echo "  docker exec -it comp-chem-ml-env codex"

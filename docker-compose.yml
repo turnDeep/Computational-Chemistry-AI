@@ -1,7 +1,6 @@
 # ================================================
 # RTX 50シリーズ（5090/5070 Ti等）対応版
 # CUDA 12.8 + PyTorch Nightly使用
-# Codex CLI と 既存のOllama を連携
 # ================================================
 
 services:
@@ -24,7 +23,7 @@ services:
               count: all
               capabilities: [gpu]
     
-    # 環境変数（RTX 50シリーズ最適化 + 既存Ollama連携）
+    # 環境変数（RTX 50シリーズ最適化）
     environment:
       # GPU設定
       - NVIDIA_VISIBLE_DEVICES=all
@@ -33,13 +32,7 @@ services:
       - TORCH_CUDA_ARCH_LIST=9.0;12.0  # sm_90 (RTX 40) + sm_120 (RTX 50)
       - CUDA_LAUNCH_BLOCKING=0  # パフォーマンス最適化
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-      
-      # Ollama設定（既存のollamaコンテナに接続）
-      - OLLAMA_HOST=http://ollama:11434
-      - OLLAMA_API_BASE=http://ollama:11434/v1
-      - OLLAMA_MODEL=gpt-oss:20b
-      - OPENAI_API_KEY=dummy  # Codexが要求する場合があるため残す
-      
+
       # サービス設定
       - JUPYTER_TOKEN=research2025  # 変更推奨
       
@@ -82,10 +75,9 @@ services:
       # Dockerソケット（必要に応じて）
       # - /var/run/docker.sock:/var/run/docker.sock
     
-    # ネットワーク設定（重要：既存のollamaネットワークに参加）
+    # ネットワーク設定
     networks:
       - research-network      # 内部ネットワーク
-      - ai-setup_default      # 既存のOllamaネットワークに参加
     
     # セキュリティ設定
     security_opt:
@@ -166,18 +158,6 @@ networks:
       config:
         - subnet: 172.20.0.0/24
           gateway: 172.20.0.1
-  
-  # 既存のOllamaネットワークに接続
-  # ※ "ai-setup"がollamaのフォルダ名の場合
-  # ※ 異なる場合は実際のネットワーク名に変更してください
-  ai-setup_default:
-    external: true
-    # フォルダ名が異なる場合の例：
-    # ollama-docker_default:
-    #   external: true
-    # または
-    # my-ai-setup_default:
-    #   external: true
 
 # ボリューム定義
 volumes:

@@ -14,8 +14,6 @@
 
 ## 🌟 主な機能
 
-- **Codex CLI** + **Ollama** 統合によるローカルLLMエージェント
-- **Serena-MCP** によるプログラミング支援
 - **RTX 50シリーズ最適化済み** PyTorch環境
 - **GPU加速分子計算**: gpu4pyscf-cuda12x対応
 - **計算化学ライブラリ完備**: RDKit, ASE, MDAnalysis, PySCF, gpu4pyscf等
@@ -31,7 +29,6 @@
 - NVIDIA Docker Runtime（nvidia-container-toolkit）
 - **RTX 5090/5070 Ti** または他のRTX 50シリーズGPU
 - **NVIDIA Driver 570.xx以上**（CUDA 12.8対応）
-- Ollama（ホスト側で稼働中）
 - 最低64GB RAM推奨（RTX 5090の場合は128GB推奨）
 - 100GB以上の空きディスク容量
 
@@ -71,18 +68,7 @@ mkdir -p datasets models logs notebooks
 - `docker-compose.yml`（RTX 50シリーズ対応版）
 - `requirements.txt`（RTX 50シリーズ用）
 
-### 4. Ollamaモデルの準備（ホスト側）
-
-```bash
-# GPT-OSS-20Bモデルを使用
-ollama pull gpt-oss-20b
-
-# または他の推奨モデル
-ollama pull qwen2.5-coder:7b-instruct
-ollama pull deepseek-coder:33b-instruct
-```
-
-### 5. Dockerイメージのビルド
+### 4. Dockerイメージのビルド
 
 ```bash
 # RTX 50シリーズ対応イメージをビルド（時間がかかります）
@@ -92,7 +78,7 @@ docker compose build
 docker images | grep computational-chemistry-ml
 ```
 
-### 6. コンテナの起動
+### 5. コンテナの起動
 
 ```bash
 # GPUチェックとメインコンテナの起動
@@ -103,7 +89,7 @@ docker compose logs gpu-check
 docker compose logs research-env
 ```
 
-### 7. GPU動作確認
+### 6. GPU動作確認
 
 ```bash
 # コンテナ内でGPU検証スクリプトを実行
@@ -115,7 +101,7 @@ docker exec comp-chem-ml-env python3 /usr/local/bin/verify-gpu.py
 # ✅ GPU演算テスト成功!
 ```
 
-### 8. 分子計算環境テスト
+### 7. 分子計算環境テスト
 
 ```bash
 # GPU加速分子計算のテスト
@@ -212,48 +198,6 @@ if compounds:
     view.zoomTo()
     view.show()
 ```
-
-### 自然言語でのコード操作 (Codex CLI + Ollama)
-
-この環境には、自然言語（日本語・英語）でコードの生成、編集、ファイル操作などを行える対話型AIエージェントが統合されています。
-
-#### 起動方法
-
-コンテナが起動している状態で、ホストのターミナルから以下のコマンドを実行します。
-
-```bash
-docker exec -it comp-chem-ml-env codex
-```
-
-これにより、コンテナ内で対話型のプロンプトが起動します。
-
-#### 使用方法
-
-プロンプトが表示されたら、実行したいタスクを自然言語で入力してください。AIエージェントが指示を解釈し、必要なファイル操作やコード編集を実行します。
-
-**例1：ファイルの作成と書き込み**
-
-```
-> 新しいファイル `hello.py` を作成し、`print("Hello from the AI agent!")` と書き込んでください。
-```
-
-**例2：既存ファイルの編集**
-
-```
-> `hello.py` を読み込み、`print` 文を "Hello, GPU world!" に変更してください。
-```
-
-**例3：コマンドの実行**
-
-```
-> `hello.py` を実行して、その出力を教えてください。
-```
-
-#### 仕組み
-
-この機能は、`@openai/codex`ツールをフロントエンドとし、バックエンドではホストマシンで稼働しているOllamaに接続して言語モデル（例：`gpt-oss:20b`）を利用します。この連携はコンテナ内の`/root/.codex/config.toml`ファイルで設定されています。
-
-終了するには `exit` と入力するか、`Ctrl+D` を押してください。
 
 ## 🔧 トラブルシューティング
 
