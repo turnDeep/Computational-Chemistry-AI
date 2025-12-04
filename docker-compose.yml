@@ -7,9 +7,10 @@
 services:
   # メインの計算化学・ML研究環境
   research-env:
+    image: comp-chem-ml-env:latest
     build:
       context: .
-      dockerfile: dockerfile
+      dockerfile: Dockerfile
       args:
         - BUILDKIT_INLINE_CACHE=1
     container_name: comp-chem-ml-env
