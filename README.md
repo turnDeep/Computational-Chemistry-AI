@@ -253,6 +253,59 @@ docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
 # Settings → Resources → WSL Integration → Ubuntu を有効化
 ```
 
+### CUDAドライバとランタイムのバージョン不一致を確認する場合
+
+CUDAドライバとCUDAランタイムのバージョン不一致は、GPU計算エラーの主な原因の一つです。以下の方法で確認できます：
+
+**方法1: 専用スクリプトで確認（推奨）**
+
+```bash
+# Dev Container内で実行
+python3 check_cuda_versions.py
+```
+
+このスクリプトは以下を自動的にチェックします：
+- CUDAドライババージョン（nvidia-smiから取得）
+- CUDAランタイムバージョン（nvccから取得）
+- PyTorchが認識しているCUDAバージョン
+- CuPyが認識しているCUDAバージョン
+- これらのバージョン間の互換性
+
+**方法2: 手動で確認**
+
+```bash
+# 1. CUDAドライババージョンを確認
+nvidia-smi
+# 出力例: CUDA Version: 12.8
+
+# 2. CUDAランタイムバージョンを確認
+nvcc --version
+# 出力例: release 12.8, V12.8.xxx
+
+# 3. PyTorchから確認
+python3 -c "import torch; print(f'PyTorch CUDA: {torch.version.cuda}')"
+
+# 4. CuPyから確認
+python3 -c "import cupy as cp; v=cp.cuda.runtime.runtimeGetVersion(); print(f'CuPy CUDA: {v//1000}.{(v%1000)//10}')"
+```
+
+**バージョン互換性のルール：**
+- ✅ CUDAドライババージョン ≥ CUDAランタイムバージョン（正常）
+- ⚠️ CUDAドライババージョン < CUDAランタイムバージョン（エラーの可能性）
+- 📌 PyTorchとCuPyは、システムのCUDAランタイムと一致したバージョンでビルドされている必要があります
+
+**不一致が見つかった場合の対処法：**
+
+```bash
+# PyTorchを正しいCUDAバージョンで再インストール（CUDA 12.8の場合）
+pip uninstall torch torchvision torchaudio -y
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
+
+# CuPyを再インストール
+pip uninstall cupy-cuda12x -y
+pip install cupy-cuda12x==13.4.1
+```
+
 ### コンテナビルドが失敗する場合
 
 ```bash
