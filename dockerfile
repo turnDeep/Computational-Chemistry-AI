@@ -1,23 +1,18 @@
 # ================================================
 # RTX 50シリーズ（Blackwell sm_120）対応版
 # CUDA 12.8 + PyTorch Nightlyビルドを使用
-# Codex CLI と Ollama を連携
 # ================================================
 
 # CUDA 12.8 Ubuntu 22.04 ベースイメージ（Blackwell対応）
 FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
 
-# 環境変数設定（sm_120対応 + Ollama連携）
+# 環境変数設定（sm_120対応）
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     CUDA_HOME=/usr/local/cuda-12.8 \
     PATH=/usr/local/cuda-12.8/bin:$PATH \
     LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH \
-    OLLAMA_HOST=http://host.docker.internal:11434 \
-    OLLAMA_API_BASE=http://host.docker.internal:11434/v1 \
-    OLLAMA_MODEL=gpt-oss:20b \
-    OPENAI_API_KEY=dummy \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     TORCH_CUDA_ARCH_LIST="9.0;12.0" \
@@ -196,20 +191,6 @@ RUN cat <<'EOF' > /root/.codex/AGENTS.md
 EOF
 
 
-# Codex CLI設定 (ラッパースクリプトを呼び出す方式)
-RUN cat <<'EOF' > /root/.codex/config.toml
-# Default model provider to use.
-model_provider = "ollama"
-
-# Default model to use.
-model = "gpt-oss:20b"
-
-[model_providers.ollama]
-name = "Ollama"
-base_url = "http://ollama:11434/v1"
-api_key_env = ""
-
-EOF
 
 # GPU検証スクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/verify-gpu.py
