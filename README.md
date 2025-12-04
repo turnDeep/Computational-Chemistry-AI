@@ -1,8 +1,8 @@
 # 🧪 RTX 50シリーズ対応 計算化学・機械学習研究用Docker環境
 
-## 🎮 RTX 5090/5070 Ti完全対応版
+## 🎮 RTX 5090/5070 Ti完全対応版 + VS Code Dev Container対応
 
-オフライン環境での計算化学と機械学習研究に最適化された、**RTX 50シリーズ（Blackwell sm_120）完全対応**のDocker環境です。
+オフライン環境での計算化学と機械学習研究に最適化された、**RTX 50シリーズ（Blackwell sm_120）完全対応**のDocker環境です。VS Code Dev Container機能により、コンテナ内で直接開発が可能です。
 
 ## ⚡ RTX 50シリーズサポートの特徴
 
@@ -14,6 +14,7 @@
 
 ## 🌟 主な機能
 
+- **VS Code Dev Container対応**: コンテナ内で直接開発可能
 - **RTX 50シリーズ最適化済み** PyTorch環境
 - **GPU加速分子計算**: gpu4pyscf-cuda12x対応
 - **計算化学ライブラリ完備**: RDKit, ASE, MDAnalysis, PySCF, gpu4pyscf等
@@ -21,12 +22,13 @@
 - **PubChemデータベースアクセス**: PubChemPy内蔵
 - **3D分子可視化**: py3Dmol対応
 - **機械学習フレームワーク**: PyTorch (Nightly), TensorFlow, scikit-learn等
-- **JupyterLab** 統合開発環境
+- **JupyterLab**: オプションで利用可能
 
 ## 📋 前提条件
 
 - Docker Desktop（WSL2上のUbuntu推奨）
 - NVIDIA Docker Runtime（nvidia-container-toolkit）
+- **Visual Studio Code** + **Dev Containers拡張機能**（推奨）
 - **RTX 5090/5070 Ti** または他のRTX 50シリーズGPU
 - **NVIDIA Driver 570.xx以上**（CUDA 12.8対応）
 - 最低64GB RAM推奨（RTX 5090の場合は128GB推奨）
@@ -115,13 +117,83 @@ docker exec comp-chem-ml-env python3 /usr/local/bin/test-gpu-chemistry.py
 
 ## 💻 使用方法
 
-### JupyterLabへのアクセス
+### 方法1: VS Code Dev Container（推奨）
 
-ブラウザで以下にアクセス：
+VS Code Dev Container機能を使用すると、コンテナ内で直接コードを編集・実行できます。
+
+#### 初回セットアップ
+
+1. **VS Codeに拡張機能をインストール**
+   ```
+   拡張機能: Dev Containers (ms-vscode-remote.remote-containers)
+   ```
+
+2. **プロジェクトフォルダを開く**
+   ```bash
+   code .
+   ```
+
+3. **Dev Containerで開く**
+   - VS Code左下の緑のアイコンをクリック
+   - "Reopen in Container" を選択
+   - 初回はイメージのビルドに時間がかかります
+
+4. **環境確認**
+   コンテナ内のターミナルで以下を実行：
+   ```bash
+   python3 /usr/local/bin/verify-gpu.py
+   python3 /usr/local/bin/test-gpu-chemistry.py
+   ```
+
+#### Dev Container内での開発
+
+コンテナが起動したら、以下が自動的に設定されます：
+- Python環境（/opt/venv）
+- GPU対応PyTorch
+- 全ての計算化学ライブラリ
+- VS Code Python拡張機能
+- Jupyter Notebook サポート
+
+**Pythonスクリプトの実行**
+```bash
+# ターミナルから直接実行
+python your_script.py
+
+# またはVS Codeのデバッガーを使用
 ```
-http://localhost:8888
-Token: research2025
+
+**Jupyter Notebookの使用**
+- `.ipynb`ファイルを作成
+- VS Code内でそのまま実行可能（JupyterLabサーバー不要）
+
+**JupyterLabを起動する場合（オプション）**
+```bash
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+# ブラウザで http://localhost:8888 にアクセス
+# Token: research2025
 ```
+
+### 方法2: Docker Composeで起動（従来の方法）
+
+Dev Containerを使用せず、Docker Composeで直接起動する場合：
+
+```bash
+docker compose up -d
+docker exec -it comp-chem-ml-env bash
+```
+
+**JupyterLabを起動する場合**
+```bash
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+# ブラウザで http://localhost:8888 にアクセス
+# Token: research2025
+```
+
+---
+
+## 📝 コード例
+
+以下の例は、Dev Container内でもDocker Compose内でも実行できます。
 
 ### PyTorchでRTX 5090を使用
 

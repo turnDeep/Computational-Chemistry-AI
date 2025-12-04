@@ -18,34 +18,29 @@ python3 -c "import pyscf, rdkit, pubchempy, py3Dmol; print('✅ 主要ライブ�
 # ログディレクトリ作成
 mkdir -p /workspace/logs
 
-# JupyterLabの起動
-echo "📊 JupyterLabを起動中..."
-# 仮想環境のPythonを直接指定してJupyterLabを起動する
-/opt/venv/bin/python -m jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
-    --NotebookApp.token="${JUPYTER_TOKEN:-research2025}" \
-    > /workspace/logs/jupyter.log 2>&1 &
-JUPYTER_PID=$!
-echo "✅ JupyterLab起動 (PID: $JUPYTER_PID)"
-
 # 起動完了メッセージ
 echo ""
 echo "=========================================="
 echo "🎉 環境の起動が完了しました！"
 echo "=========================================="
 echo ""
-echo "📌 アクセス情報:"
-echo "  - JupyterLab: http://localhost:8888"
-echo "  - Token: ${JUPYTER_TOKEN:-research2025}"
-echo ""
 echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
 echo "🔧 CUDA 12.8 + PyTorch Nightly"
-echo ""
-echo "💡 Codex CLI を使用するには:"
-echo "  docker exec -it comp-chem-ml-env codex"
 echo ""
 echo "📁 作業ディレクトリ: /workspace"
 echo "📝 ログディレクトリ: /workspace/logs"
 echo ""
+echo "💡 VS Code Dev Container で開発する場合:"
+echo "  VS Code でこのフォルダを開き、'Reopen in Container' を選択"
+echo ""
+echo "💡 JupyterLab を起動する場合:"
+echo "  jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
+echo ""
+echo "📌 JupyterLabアクセス情報:"
+echo "  - URL: http://localhost:8888"
+echo "  - Token: ${JUPYTER_TOKEN:-research2025}"
+echo ""
 
-# プロセスの監視
-wait
+# コンテナを起動し続ける（Dev Container用）
+echo "🔄 コンテナを起動状態に保ちます..."
+tail -f /dev/null

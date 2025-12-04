@@ -1,0 +1,107 @@
+{
+  "name": "Computational Chemistry ML Environment (RTX 50)",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "research-env",
+  "workspaceFolder": "/workspace",
+
+  // コンテナ作成後に実行するコマンド
+  "postCreateCommand": "python3 /usr/local/bin/verify-gpu.py",
+
+  // VS Code拡張機能の推奨
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python開発
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-toolsai.jupyter",
+
+        // データサイエンス
+        "ms-toolsai.vscode-jupyter-cell-tags",
+        "ms-toolsai.jupyter-keymap",
+        "ms-toolsai.jupyter-renderers",
+
+        // Git
+        "eamodio.gitlens",
+
+        // コード品質
+        "ms-python.flake8",
+        "ms-python.mypy-type-checker",
+
+        // その他
+        "streetsidesoftware.code-spell-checker",
+        "christian-kohler.path-intellisense"
+      ],
+
+      "settings": {
+        // Python設定
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "python.formatting.provider": "black",
+        "python.linting.enabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.analysis.typeCheckingMode": "basic",
+
+        // ターミナル設定
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash"
+          }
+        },
+
+        // ファイル設定
+        "files.watcherExclude": {
+          "**/.git/objects/**": true,
+          "**/.git/subtree-cache/**": true,
+          "**/node_modules/**": true,
+          "**/__pycache__/**": true
+        },
+
+        // エディタ設定
+        "editor.formatOnSave": true,
+        "editor.rulers": [88, 120],
+        "editor.tabSize": 4,
+
+        // Jupyter設定
+        "jupyter.askForKernelRestart": false,
+        "jupyter.widgetScriptSources": ["jsdelivr.com", "unpkg.com"]
+      }
+    }
+  },
+
+  // コンテナ内で使用するユーザー
+  "remoteUser": "root",
+
+  // ポートフォワーディング
+  "forwardPorts": [8888],
+  "portsAttributes": {
+    "8888": {
+      "label": "JupyterLab",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // 機能追加
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true
+    }
+  },
+
+  // GPU設定
+  "runArgs": [
+    "--gpus=all",
+    "--runtime=nvidia"
+  ],
+
+  // マウント設定
+  "mounts": [
+    "source=${localWorkspaceFolder}/workspace,target=/workspace,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/datasets,target=/datasets,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/models,target=/models,type=bind,consistency=cached"
+  ]
+}
