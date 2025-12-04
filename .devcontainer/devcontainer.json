@@ -74,34 +74,12 @@
   // コンテナ内で使用するユーザー
   "remoteUser": "root",
 
-  // ポートフォワーディング
+  // ポートフォワーディング (docker-composeで定義済みだが、VS Code用に明示)
   "forwardPorts": [8888],
   "portsAttributes": {
     "8888": {
       "label": "JupyterLab",
       "onAutoForward": "notify"
     }
-  },
-
-  // 機能追加
-  "features": {
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": true,
-      "installOhMyZsh": true
-    }
-  },
-
-  // GPU設定
-  "runArgs": [
-    "--gpus=all",
-    "--runtime=nvidia"
-  ],
-
-  // マウント設定
-  "mounts": [
-    "source=${localWorkspaceFolder}/workspace,target=/workspace,type=bind,consistency=cached",
-    "source=${localWorkspaceFolder}/datasets,target=/datasets,type=bind,consistency=cached",
-    "source=${localWorkspaceFolder}/models,target=/models,type=bind,consistency=cached"
-  ]
+  }
 }
