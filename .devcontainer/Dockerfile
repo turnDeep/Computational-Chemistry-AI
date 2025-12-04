@@ -1,6 +1,7 @@
 # ================================================
 # RTX 50シリーズ（Blackwell sm_120）対応版
 # CUDA 12.8 + PyTorch Nightlyビルドを使用
+# VS Code Dev Container 専用設定
 # ================================================
 
 # CUDA 12.8 Ubuntu 22.04 ベースイメージ（Blackwell対応）
@@ -17,7 +18,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=en_US.UTF-8 \
     TORCH_CUDA_ARCH_LIST="9.0;12.0" \
     CUDA_LAUNCH_BLOCKING=0 \
-    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+    JUPYTER_TOKEN=research2025
 
 # 作業ディレクトリ設定
 WORKDIR /workspace
@@ -46,6 +48,8 @@ RUN apt-get update && \
     iputils-ping net-tools dnsutils \
     # SSH（必要な場合）
     openssh-client \
+    # VS Code Dev Container用の追加ツール
+    sudo zsh \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 3.11をデフォルトに設定
@@ -56,7 +60,6 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 RUN python3.11 -m venv /opt/venv
 
 # システムのデフォルトPythonを仮想環境のPythonに強制的に置き換える
-# これにより、いかなる状況でも仮想環境が使われることを保証する
 RUN ln -sf /opt/venv/bin/python /usr/bin/python && \
     ln -sf /opt/venv/bin/python /usr/bin/python3 && \
     ln -sf /opt/venv/bin/pip /usr/bin/pip && \
@@ -74,7 +77,6 @@ RUN pip install --no-cache-dir --pre \
 
 # ===================================================
 # Pythonパッケージ一括インストール
-# 依存関係の問題を回避するため、ビルドツール(six, hatchling)を先にインストール
 # ===================================================
 RUN pip install --no-cache-dir six hatchling wheel
 
@@ -83,7 +85,7 @@ RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
     cupy-cuda12x==13.4.1 \
     cutensor-cu12==2.2.0 \
     \
-    # 基本的な科学計算ライブラリ (numpyバージョンを固定)
+    # 基本的な科学計算ライブラリ
     numpy==1.26.4 \
     scipy==1.13.0 \
     pandas==2.2.2 \
@@ -94,7 +96,7 @@ RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
     jupyterlab==4.1.5 \
     ipython==8.23.0 \
     \
-    # 機械学習フレームワーク（PyTorch以外）
+    # 機械学習フレームワーク
     tensorflow==2.16.1 \
     scikit-learn==1.4.2 \
     xgboost==2.0.3 \
@@ -102,14 +104,14 @@ RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
     catboost==1.2.3 \
     keras==3.1.1 \
     \
-    # Deep Learning - Transformers & Ecosystem
+    # Deep Learning - Transformers
     transformers==4.40.0 \
     accelerate==0.29.3 \
     datasets==2.19.0 \
     tokenizers==0.19.1 \
     sentencepiece==0.2.0 \
     \
-    # 計算化学ライブラリ（GPU対応版含む）
+    # 計算化学ライブラリ
     rdkit==2024.03.1 \
     ase==3.22.1 \
     mdanalysis==2.7.0 \
@@ -190,8 +192,6 @@ RUN cat <<'EOF' > /root/.codex/AGENTS.md
 必ず日本語で応答してください。
 EOF
 
-
-
 # GPU検証スクリプトの作成
 RUN cat <<'SCRIPT' > /usr/local/bin/verify-gpu.py
 #!/usr/bin/env python3
@@ -210,23 +210,23 @@ if cuda_available:
     # デバイス情報
     device_count = torch.cuda.device_count()
     print(f"GPUデバイス数: {device_count}")
-    
+
     for i in range(device_count):
         props = torch.cuda.get_device_properties(i)
         print(f"\nGPU {i}: {torch.cuda.get_device_name(i)}")
         print(f"  Compute Capability: {props.major}.{props.minor}")
         print(f"  メモリ: {props.total_memory / 1e9:.1f} GB")
         print(f"  SM数: {props.multi_processor_count}")
-        
+
         # sm_120のチェック
         if props.major == 12 and props.minor == 0:
             print(f"  ✅ sm_120 (Blackwell) 検出!")
-    
+
     # PyTorchバージョン情報
     print(f"\nPyTorch Version: {torch.__version__}")
     print(f"CUDA Version: {torch.version.cuda}")
     print(f"cuDNN Version: {torch.backends.cudnn.version()}")
-    
+
     # 簡単なGPU演算テスト
     try:
         test_tensor = torch.randn(1000, 1000).cuda()
@@ -244,92 +244,57 @@ SCRIPT
 
 RUN chmod +x /usr/local/bin/verify-gpu.py
 
-# GPU分子計算サンプルスクリプトの作成
-RUN cat <<'SCRIPT' > /usr/local/bin/test-gpu-chemistry.py
-#!/usr/bin/env python3
-"""
-RTX 50シリーズでのGPU加速分子計算デモ
-"""
-import torch
-import numpy as np
-from rdkit import Chem
-from rdkit.Chem import Descriptors
-import pyscf
-from pyscf import gto, scf
-import pubchempy as pcp
+# 起動スクリプトを直接Dockerfileに埋め込む
+RUN cat <<'SCRIPT' > /usr/local/bin/start-environment.sh
+#!/bin/bash
+set -e
 
-print("=" * 60)
-print("GPU加速分子計算環境テスト")
-print("=" * 60)
+echo "🚀 RTX 50シリーズ対応 計算化学・機械学習研究環境を起動しています..."
 
-# 1. GPU確認
-print("\n[1] GPU状態確認")
-if torch.cuda.is_available():
-    print(f"✅ GPU: {torch.cuda.get_device_name(0)}")
-    print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    props = torch.cuda.get_device_properties(0)
-    if props.major == 12 and props.minor == 0:
-        print(f"✅ RTX 50シリーズ (sm_120) 検出！")
-else:
-    print("❌ GPU利用不可")
+# GPU検証
+echo "🎮 GPU検証中..."
+python3 /usr/local/bin/verify-gpu.py || {
+    echo "⚠️ GPU検証に失敗しましたが、続行します..."
+}
 
-# 2. RDKit分子処理
-print("\n[2] RDKit分子処理")
-mol = Chem.MolFromSmiles('CC(=O)OC1=CC=CC=C1C(=O)O')  # アスピリン
-if mol:
-    mw = Descriptors.MolWt(mol)
-    logp = Descriptors.MolLogP(mol)
-    print(f"✅ アスピリン: 分子量={mw:.2f}, LogP={logp:.2f}")
+# 分子計算環境テスト（オプション）
+echo "🧪 分子計算環境の確認中..."
+python3 -c "import pyscf, rdkit, pubchempy, py3Dmol; print('✅ 主要ライブラリ利用可能')" || {
+    echo "⚠️ 一部のライブラリが利用できません"
+}
 
-# 3. PySCF量子化学計算
-print("\n[3] PySCF量子化学計算")
-mol_h2o = gto.Mole()
-mol_h2o.atom = '''
-    O  0.0  0.0  0.0
-    H  0.757  0.586  0.0
-    H -0.757  0.586  0.0
-'''
-mol_h2o.basis = '6-31G'
-mol_h2o.build()
+# ログディレクトリ作成
+mkdir -p /workspace/logs
 
-# 4. GPU加速の確認（gpu4pyscfがインストールされている場合）
-try:
-    import gpu4pyscf
-    print("✅ gpu4pyscf インストール済み - GPU加速利用可能")
-    # GPU加速SCF計算
-    mf = gpu4pyscf.scf.RHF(mol_h2o).to_gpu()
-    energy = mf.kernel()
-    print(f"   HF Energy (GPU): {energy:.6f} Hartree")
-except ImportError:
-    print("⚠️  gpu4pyscf CPU版を使用")
-    mf = scf.RHF(mol_h2o)
-    energy = mf.kernel()
-    print(f"   HF Energy (CPU): {energy:.6f} Hartree")
+# 起動完了メッセージ
+echo ""
+echo "=========================================="
+echo "🎉 環境の起動が完了しました！"
+echo "=========================================="
+echo ""
+echo "🎮 RTX 50シリーズ (sm_120) サポート有効"
+echo "🔧 CUDA 12.8 + PyTorch Nightly"
+echo ""
+echo "📁 作業ディレクトリ: /workspace"
+echo "📝 ログディレクトリ: /workspace/logs"
+echo ""
+echo "💡 JupyterLab を起動する場合:"
+echo "  jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
+echo ""
+echo "📌 JupyterLabアクセス情報:"
+echo "  - URL: http://localhost:8888"
+echo "  - Token: ${JUPYTER_TOKEN:-research2025}"
+echo ""
 
-# 5. PubChemPyテスト
-print("\n[4] PubChemPyデータ取得")
-try:
-    compounds = pcp.get_compounds('Aspirin', 'name')
-    if compounds:
-        c = compounds[0]
-        print(f"✅ PubChem CID: {c.cid}")
-        print(f"   分子式: {c.molecular_formula}")
-except Exception as e:
-    print(f"⚠️  PubChemアクセスエラー: {e}")
-
-print("\n" + "=" * 60)
-print("すべてのテスト完了！")
-print("=" * 60)
+# コンテナを起動し続ける（Dev Container用）
+echo "🔄 コンテナを起動状態に保ちます..."
+tail -f /dev/null
 SCRIPT
 
-RUN chmod +x /usr/local/bin/test-gpu-chemistry.py
+RUN chmod +x /usr/local/bin/start-environment.sh
 
 # bashrcの設定: ターミナル起動時に自動で仮想環境を有効化
 RUN echo "source /opt/venv/bin/activate" >> /root/.bashrc
-
-# 起動スクリプトをコピー（外部ファイルから）
-COPY start-environment.sh /usr/local/bin/start-environment.sh
-RUN chmod +x /usr/local/bin/start-environment.sh
 
 # Pythonパス設定
 ENV PYTHONPATH="/workspace:$PYTHONPATH"
@@ -337,8 +302,5 @@ ENV PYTHONPATH="/workspace:$PYTHONPATH"
 # ポート公開
 EXPOSE 8888 9123
 
-# ボリュームマウントポイント
-VOLUME ["/workspace", "/root/.codex", "/workspace/logs"]
-
 # エントリーポイント
-ENTRYPOINT ["/usr/local/bin/start-environment.sh"]
+CMD ["/usr/local/bin/start-environment.sh"]
