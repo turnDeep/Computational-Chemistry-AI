@@ -119,8 +119,14 @@ python calculate_solvent_effect.py --smiles "O=C1C=CC(=O)C=C1" --compare-solvent
 ### 6. BDE計算
 
 ```bash
-# エタノールの全結合のBDE計算（BDE-db2準拠）
+# エタノールの全結合のBDE計算（MMFF最適化、最速）
 python calculate_bde.py --smiles "CCO" --use-gpu
+
+# 2段階計算（B3LYP/6-31G*最適化 + M06-2X/def2-TZVPエネルギー、推奨）
+python calculate_bde.py --smiles "CCO" --optimize-level b3lyp --use-gpu
+
+# 完全最適化（M06-2X/def2-TZVPで構造最適化も実行、最高精度）
+python calculate_bde.py --smiles "CCO" --optimize-level same --use-gpu
 
 # 出力例:
 # 結合タイプ  平均BDE   最小BDE   最大BDE   個数
@@ -132,11 +138,17 @@ python calculate_bde.py --smiles "CCO" --use-gpu
 # 最弱結合: C(1)-H(4) = 96.12 kcal/mol
 # 最強結合: O(2)-H(8) = 104.23 kcal/mol
 
-# 酢酸のBDE計算（カルボン酸のO-H結合の解離）
-python calculate_bde.py --smiles "CC(=O)O" --method M06-2X --basis def2-TZVP
+# 酢酸のBDE計算（2段階計算で高速化）
+python calculate_bde.py --smiles "CC(=O)O" --optimize-level b3lyp --use-gpu
 
 # ベンゼンのBDE計算
 python calculate_bde.py --smiles "c1ccccc1" --use-gpu
+```
+
+**最適化レベルの選択:**
+- `--optimize-level mmff` (デフォルト): MMFF分子力場で最適化（最速、精度は妥当）
+- `--optimize-level b3lyp` (推奨): B3LYP/6-31G*最適化 + 高精度計算（70-80%高速化、精度良好）
+- `--optimize-level same`: 指定した手法で完全最適化（最高精度、計算時間長い）
 ```
 
 ## 💻 高度な使用例

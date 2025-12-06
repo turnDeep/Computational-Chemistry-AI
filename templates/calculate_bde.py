@@ -6,8 +6,14 @@ RTX 50シリーズGPU対応版
 化合物の全結合のBDE(Bond Dissociation Energy)を計算します。
 BDE-db2データベースと同じM06-2X/def2-TZVP手法を使用。
 
+構造最適化レベル:
+- mmff: MMFF分子力場で最適化（最速、デフォルト）
+- b3lyp: B3LYP/6-31G*で最適化 + M06-2X/def2-TZVPシングルポイント（推奨）
+- same: M06-2X/def2-TZVPで構造最適化も実行（最高精度、最遅）
+
 使用例:
-python calculate_bde.py --smiles "CCO"  # エタノール
+python calculate_bde.py --smiles "CCO"  # エタノール（MMFF最適化）
+python calculate_bde.py --smiles "CCO" --optimize-level b3lyp --use-gpu  # 2段階計算（推奨）
 python calculate_bde.py --smiles "CC(=O)O" --use-gpu  # 酢酸（GPU加速）
 python calculate_bde.py --smiles "c1ccccc1" --method "B3LYP" --basis "6-31G*"
 
@@ -22,6 +28,7 @@ import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors
 from pyscf import gto, scf, dft
+from pyscf.geomopt.geometric_solver import optimize
 import torch
 import warnings
 import time
@@ -150,6 +157,88 @@ def perform_calculation(mol: gto.Mole, method: str = 'M06-2X',
 
     return energy
 
+def optimize_geometry_pyscf(atoms: List[str], coords: np.ndarray,
+                           method: str = 'B3LYP', basis: str = '6-31G*',
+                           charge: int = 0, spin: int = 0,
+                           use_gpu: bool = False, verbose: int = 0) -> Tuple[np.ndarray, float]:
+    """
+    PySCFで構造最適化を実行
+
+    Args:
+        atoms: 原子記号のリスト
+        coords: 初期座標配列
+        method: 計算手法
+        basis: 基底関数
+        charge: 電荷
+        spin: スピン多重度-1
+        use_gpu: GPU加速を使用するか
+        verbose: 詳細度
+
+    Returns:
+        optimized_coords: 最適化された座標
+        energy: 最適化後のエネルギー
+    """
+    # 分子オブジェクトを作成
+    mol = create_pyscf_mol(atoms, coords, basis, charge, spin)
+
+    # 計算オブジェクトを作成
+    if use_gpu and torch.cuda.is_available():
+        try:
+            import gpu4pyscf
+            if method == 'HF':
+                if spin == 0:
+                    mf = gpu4pyscf.scf.RHF(mol).to_gpu()
+                else:
+                    mf = gpu4pyscf.scf.UHF(mol).to_gpu()
+            else:
+                if spin == 0:
+                    mf = gpu4pyscf.dft.RKS(mol).to_gpu()
+                else:
+                    mf = gpu4pyscf.dft.UKS(mol).to_gpu()
+                mf.xc = method
+            mf.verbose = verbose
+        except ImportError:
+            if verbose > 0:
+                print("⚠️ gpu4pyscf未インストール、CPUを使用")
+            use_gpu = False
+
+    if not use_gpu:
+        if method == 'HF':
+            if spin == 0:
+                mf = scf.RHF(mol)
+            else:
+                mf = scf.UHF(mol)
+        else:
+            if spin == 0:
+                mf = dft.RKS(mol)
+            else:
+                mf = dft.UKS(mol)
+            mf.xc = method
+        mf.verbose = verbose
+
+    mf.conv_tol = 1e-6
+    mf.max_cycle = 100
+
+    try:
+        # 構造最適化を実行
+        mol_eq = optimize(mf, maxsteps=100)
+
+        # 最適化後の座標を取得
+        optimized_coords = mol_eq.atom_coords()
+
+        # 最適化後のエネルギーを計算
+        mf_opt = mf.__class__(mol_eq)
+        if hasattr(mf, 'xc'):
+            mf_opt.xc = mf.xc
+        mf_opt.verbose = 0
+        energy = mf_opt.kernel()
+
+        return optimized_coords, energy
+    except Exception as e:
+        if verbose > 0:
+            print(f"⚠️ 構造最適化エラー: {e}")
+        return coords, None
+
 def get_all_bonds(smiles: str) -> List[Tuple[int, int, str]]:
     """
     分子の全結合を取得
@@ -230,7 +319,7 @@ def create_radical_fragments(smiles: str, bond_idx1: int, bond_idx2: int) -> Tup
 
 def calculate_bde(smiles: str, bond_idx1: int, bond_idx2: int,
                  method: str = 'M06-2X', basis: str = 'def2-TZVP',
-                 use_gpu: bool = False) -> Dict:
+                 use_gpu: bool = False, optimize_level: str = 'mmff') -> Dict:
     """
     特定の結合のBDEを計算
 
@@ -243,6 +332,10 @@ def calculate_bde(smiles: str, bond_idx1: int, bond_idx2: int,
         method: 計算手法
         basis: 基底関数
         use_gpu: GPU加速を使用するか
+        optimize_level: 構造最適化のレベル
+            'mmff': MMFF分子力場で最適化（最速）
+            'b3lyp': B3LYP/6-31G*で最適化してから高精度計算（推奨）
+            'same': 指定した手法で構造最適化も行う（最高精度）
 
     Returns:
         result: BDE計算結果の辞書
@@ -262,33 +355,57 @@ def calculate_bde(smiles: str, bond_idx1: int, bond_idx2: int,
     try:
         # 親分子のエネルギー計算
         atoms, coords = smiles_to_xyz(smiles)
-        mol_parent = create_pyscf_mol(atoms, coords, basis, charge=0, spin=0)
 
-        # 閉殻の親分子にはRKSを使用
-        if method == 'HF':
-            if use_gpu:
-                import gpu4pyscf
-                mf_parent = gpu4pyscf.scf.RHF(mol_parent).to_gpu()
+        # 構造最適化レベルに応じた処理
+        if optimize_level == 'mmff':
+            # MMFF最適化済みの構造でシングルポイント計算
+            mol_parent = create_pyscf_mol(atoms, coords, basis, charge=0, spin=0)
+        elif optimize_level == 'b3lyp':
+            # B3LYP/6-31G*で構造最適化してから高精度計算
+            opt_coords, _ = optimize_geometry_pyscf(
+                atoms, coords, method='B3LYP', basis='6-31G*',
+                charge=0, spin=0, use_gpu=use_gpu, verbose=0
+            )
+            mol_parent = create_pyscf_mol(atoms, opt_coords, basis, charge=0, spin=0)
+        else:  # optimize_level == 'same'
+            # 指定した手法で構造最適化
+            opt_coords, parent_energy = optimize_geometry_pyscf(
+                atoms, coords, method=method, basis=basis,
+                charge=0, spin=0, use_gpu=use_gpu, verbose=0
+            )
+            if parent_energy is None:
+                print(f"  ⚠️ 親分子の構造最適化に失敗しました")
+                return result
+            result['parent_energy'] = parent_energy
+            mol_parent = create_pyscf_mol(atoms, opt_coords, basis, charge=0, spin=0)
+
+        # optimize_level が 'same' でない場合はシングルポイント計算
+        if optimize_level != 'same':
+            # 閉殻の親分子にはRKSを使用
+            if method == 'HF':
+                if use_gpu:
+                    import gpu4pyscf
+                    mf_parent = gpu4pyscf.scf.RHF(mol_parent).to_gpu()
+                else:
+                    mf_parent = scf.RHF(mol_parent)
             else:
-                mf_parent = scf.RHF(mol_parent)
-        else:
-            if use_gpu:
-                import gpu4pyscf
-                mf_parent = gpu4pyscf.dft.RKS(mol_parent).to_gpu()
-            else:
-                mf_parent = dft.RKS(mol_parent)
-            mf_parent.xc = method
+                if use_gpu:
+                    import gpu4pyscf
+                    mf_parent = gpu4pyscf.dft.RKS(mol_parent).to_gpu()
+                else:
+                    mf_parent = dft.RKS(mol_parent)
+                mf_parent.xc = method
 
-        mf_parent.verbose = 0
-        mf_parent.conv_tol = 1e-6
-        mf_parent.max_cycle = 100
+            mf_parent.verbose = 0
+            mf_parent.conv_tol = 1e-6
+            mf_parent.max_cycle = 100
 
-        parent_energy = mf_parent.kernel()
-        if not mf_parent.converged:
-            print(f"  ⚠️ 親分子のSCF計算が収束しませんでした")
-            return result
+            parent_energy = mf_parent.kernel()
+            if not mf_parent.converged:
+                print(f"  ⚠️ 親分子のSCF計算が収束しませんでした")
+                return result
 
-        result['parent_energy'] = parent_energy
+            result['parent_energy'] = parent_energy
 
         # ラジカル断片を作成
         frag1_atoms, frag1_coords, frag2_atoms, frag2_coords = create_radical_fragments(
@@ -300,8 +417,24 @@ def calculate_bde(smiles: str, bond_idx1: int, bond_idx2: int,
             return result
 
         # 断片1のエネルギー計算（ラジカル: spin=1）
-        mol_frag1 = create_pyscf_mol(frag1_atoms, frag1_coords, basis, charge=0, spin=1)
-        frag1_energy = perform_calculation(mol_frag1, method, use_gpu, verbose=0)
+        if optimize_level == 'mmff':
+            # MMFF最適化済みの構造でシングルポイント計算
+            mol_frag1 = create_pyscf_mol(frag1_atoms, frag1_coords, basis, charge=0, spin=1)
+            frag1_energy = perform_calculation(mol_frag1, method, use_gpu, verbose=0)
+        elif optimize_level == 'b3lyp':
+            # B3LYP/6-31G*で構造最適化してから高精度計算
+            opt_coords1, _ = optimize_geometry_pyscf(
+                frag1_atoms, frag1_coords, method='B3LYP', basis='6-31G*',
+                charge=0, spin=1, use_gpu=use_gpu, verbose=0
+            )
+            mol_frag1 = create_pyscf_mol(frag1_atoms, opt_coords1, basis, charge=0, spin=1)
+            frag1_energy = perform_calculation(mol_frag1, method, use_gpu, verbose=0)
+        else:  # optimize_level == 'same'
+            # 指定した手法で構造最適化
+            opt_coords1, frag1_energy = optimize_geometry_pyscf(
+                frag1_atoms, frag1_coords, method=method, basis=basis,
+                charge=0, spin=1, use_gpu=use_gpu, verbose=0
+            )
 
         if frag1_energy is None:
             return result
@@ -309,8 +442,24 @@ def calculate_bde(smiles: str, bond_idx1: int, bond_idx2: int,
         result['fragment1_energy'] = frag1_energy
 
         # 断片2のエネルギー計算（ラジカル: spin=1）
-        mol_frag2 = create_pyscf_mol(frag2_atoms, frag2_coords, basis, charge=0, spin=1)
-        frag2_energy = perform_calculation(mol_frag2, method, use_gpu, verbose=0)
+        if optimize_level == 'mmff':
+            # MMFF最適化済みの構造でシングルポイント計算
+            mol_frag2 = create_pyscf_mol(frag2_atoms, frag2_coords, basis, charge=0, spin=1)
+            frag2_energy = perform_calculation(mol_frag2, method, use_gpu, verbose=0)
+        elif optimize_level == 'b3lyp':
+            # B3LYP/6-31G*で構造最適化してから高精度計算
+            opt_coords2, _ = optimize_geometry_pyscf(
+                frag2_atoms, frag2_coords, method='B3LYP', basis='6-31G*',
+                charge=0, spin=1, use_gpu=use_gpu, verbose=0
+            )
+            mol_frag2 = create_pyscf_mol(frag2_atoms, opt_coords2, basis, charge=0, spin=1)
+            frag2_energy = perform_calculation(mol_frag2, method, use_gpu, verbose=0)
+        else:  # optimize_level == 'same'
+            # 指定した手法で構造最適化
+            opt_coords2, frag2_energy = optimize_geometry_pyscf(
+                frag2_atoms, frag2_coords, method=method, basis=basis,
+                charge=0, spin=1, use_gpu=use_gpu, verbose=0
+            )
 
         if frag2_energy is None:
             return result
@@ -340,6 +489,9 @@ def main():
   python calculate_bde.py --smiles "CC(=O)O" --use-gpu
   python calculate_bde.py --smiles "c1ccccc1" --method B3LYP --basis 6-31G*
 
+  # 2段階計算（推奨）
+  python calculate_bde.py --smiles "CCO" --optimize-level b3lyp --use-gpu
+
 参考:
   BDE-db2データベースではM06-2X/def2-TZVPが使用されています。
   GPU加速にはgpu4pyscfが必要です。
@@ -352,6 +504,9 @@ def main():
                        help='計算手法 (default: M06-2X, BDE-db2と同じ)')
     parser.add_argument('--basis', type=str, default='def2-TZVP',
                        help='基底関数 (default: def2-TZVP, BDE-db2と同じ)')
+    parser.add_argument('--optimize-level', type=str, default='mmff',
+                       choices=['mmff', 'b3lyp', 'same'],
+                       help='構造最適化のレベル: mmff(最速), b3lyp(推奨), same(最高精度) (default: mmff)')
     parser.add_argument('--use-gpu', action='store_true',
                        help='GPU加速を使用')
     parser.add_argument('--output', type=str, default=None,
@@ -364,6 +519,14 @@ def main():
     print("=" * 70)
     print(f"SMILES: {args.smiles}")
     print(f"手法: {args.method}/{args.basis}")
+
+    # 最適化レベルの説明
+    opt_level_desc = {
+        'mmff': 'MMFF分子力場（最速）',
+        'b3lyp': 'B3LYP/6-31G*最適化 + 高精度計算（推奨）',
+        'same': f'{args.method}/{args.basis}完全最適化（最高精度）'
+    }
+    print(f"最適化レベル: {opt_level_desc[args.optimize_level]}")
 
     # GPU情報
     if args.use_gpu:
@@ -415,7 +578,8 @@ def main():
             args.smiles, idx1, idx2,
             method=args.method,
             basis=args.basis,
-            use_gpu=args.use_gpu
+            use_gpu=args.use_gpu,
+            optimize_level=args.optimize_level
         )
 
         if result['success']:
@@ -503,6 +667,7 @@ def main():
         f.write(f"分子式: {formula}\n")
         f.write(f"分子量: {mw:.2f}\n")
         f.write(f"手法: {args.method}/{args.basis}\n")
+        f.write(f"最適化レベル: {opt_level_desc[args.optimize_level]}\n")
         f.write(f"GPU使用: {'はい' if args.use_gpu else 'いいえ'}\n")
         f.write(f"計算時間: {elapsed_time:.2f} 秒\n")
         f.write(f"\n成功: {len(results)}/{len(bonds)} 結合\n")
