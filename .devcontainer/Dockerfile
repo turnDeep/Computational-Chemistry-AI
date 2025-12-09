@@ -155,7 +155,7 @@ RUN pip install --no-cache-dir --no-build-isolation --timeout=6000 \
 RUN apt-get update && apt-get install -y --no-install-recommends git && \
     git clone --depth 1 https://github.com/pyscf/gpu4pyscf.git /tmp/gpu4pyscf_build && \
     cd /tmp/gpu4pyscf_build && \
-    CMAKE_CONFIGURE_ARGS="-DCUDA_ARCHITECTURES=90;120 -DBUILD_LIBXC=OFF" pip install . && \
+    CMAKE_CONFIGURE_ARGS="-DCUDA_ARCHITECTURES=90;120" pip install . && \
     cd / && \
     rm -rf /tmp/gpu4pyscf_build && \
     apt-get purge -y --auto-remove git && \
