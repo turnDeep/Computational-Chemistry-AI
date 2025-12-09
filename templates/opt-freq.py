@@ -16,6 +16,23 @@ from pyscf.hessian import thermo
 from tqdm import tqdm
 import time
 import warnings
+import sys
+import os
+
+# ログ出力用クラス
+class Logger(object):
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "w")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
 
 # GPU利用可能性チェック
 GPU4PYSCF_AVAILABLE = False
@@ -162,14 +179,23 @@ def main():
     print("="*60)
     print("構造最適化と振動数計算")
     print("="*60)
+    # 分子式を先に取得してログファイル名を決定
+    mol_rdkit = Chem.MolFromSmiles(args.smiles)
+    if mol_rdkit is None:
+        raise ValueError(f"Invalid SMILES: {args.smiles}")
+    formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
+    
+    # 標準出力をログファイルにも出力するように設定
+    log_filename = f"{formula}.log"
+    sys.stdout = Logger(log_filename)
+    
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
+    print(f"ログファイル: {log_filename}")
     
-    with tqdm(total=5, desc="Overall Progress") as pbar:
+    with tqdm(total=5, desc="Overall Progress", file=sys.stdout.terminal) as pbar:
         pbar.set_description("[1/5] 初期3D構造生成")
         atoms, init_coords = smiles_to_xyz(args.smiles)
-        mol_rdkit = Chem.MolFromSmiles(args.smiles)
-        formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
         print(f"分子式: {formula}, 原子数: {len(atoms)}")
         pbar.update(1)
 
