@@ -228,7 +228,13 @@ def main():
         
         # Hessian計算（CPUで実行）
         print("   Hessian calculation (CPU)...")
-        h = hessian.rks.Hessian(mf_opt)
+        # GPUオブジェクトをCPUに変換
+        if hasattr(mf_opt, 'to_cpu'):
+            mf_cpu = mf_opt.to_cpu()
+        else:
+            mf_cpu = mf_opt
+
+        h = hessian.rks.Hessian(mf_cpu)
         hess = h.kernel()
         freq_info = thermo.harmonic_analysis(mol_opt, hess)
         frequencies = freq_info['freq_wavenumber']
