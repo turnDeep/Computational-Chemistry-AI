@@ -56,13 +56,28 @@ def create_pyscf_mol(atoms, coords, basis='6-31G', charge=0, spin=0):
 def perform_calculation(mol, method='HF', use_gpu=False):
     """エネルギー計算を実行"""
     
+    mf = None
+    mp2 = None
+    
     # GPU利用可能性チェック
     if use_gpu and torch.cuda.is_available():
         try:
             import gpu4pyscf
             print(f"✅ GPU使用: {torch.cuda.get_device_name(0)}")
             
-            if method == 'HF':
+            if method == 'MP2':
+                # MP2の場合はまずHF計算を実行
+                print("   Step 1: RHF calculation (GPU)...")
+                mf = gpu4pyscf.scf.RHF(mol).to_gpu()
+                mf.kernel()
+                
+                print("   Step 2: MP2 calculation (GPU)...")
+                from gpu4pyscf import mp
+                mp2 = mp.MP2(mf)
+                energy = mp2.kernel()
+                return mf, energy
+                
+            elif method == 'HF':
                 mf = gpu4pyscf.scf.RHF(mol).to_gpu()
             elif method in ['B3LYP', 'PBE', 'M06-2X']:
                 mf = gpu4pyscf.dft.RKS(mol).to_gpu()
@@ -73,9 +88,22 @@ def perform_calculation(mol, method='HF', use_gpu=False):
         except ImportError:
             print("⚠️ gpu4pyscf未インストール、CPUを使用")
             use_gpu = False
-    
+            
     if not use_gpu:
-        if method == 'HF':
+        print("💻 CPU使用")
+        if method == 'MP2':
+            # MP2の場合はまずHF計算を実行
+            print("   Step 1: RHF calculation (CPU)...")
+            mf = scf.RHF(mol)
+            mf.kernel()
+            
+            print("   Step 2: MP2 calculation (CPU)...")
+            from pyscf import mp
+            mp2 = mp.MP2(mf)
+            energy = mp2.kernel()
+            return mf, energy
+
+        elif method == 'HF':
             mf = scf.RHF(mol)
         elif method in ['B3LYP', 'PBE', 'M06-2X']:
             mf = dft.RKS(mol)
@@ -83,7 +111,7 @@ def perform_calculation(mol, method='HF', use_gpu=False):
         else:
             raise ValueError(f"未対応の手法: {method}")
     
-    # エネルギー計算
+    # HF/DFTエネルギー計算
     energy = mf.kernel()
     
     return mf, energy
@@ -121,7 +149,7 @@ def main():
     parser.add_argument('--smiles', type=str, required=True, 
                        help='計算対象分子のSMILES')
     parser.add_argument('--method', type=str, default='HF',
-                       choices=['HF', 'B3LYP', 'PBE', 'M06-2X'],
+                       choices=['HF', 'B3LYP', 'PBE', 'M06-2X', 'MP2'],
                        help='計算手法 (default: HF)')
     parser.add_argument('--basis', type=str, default='6-31G',
                        help='基底関数 (default: 6-31G)')
@@ -176,10 +204,14 @@ def main():
     
     # 双極子モーメント
     print("\n[5] 分子特性...")
-    dipole = calculate_dipole(mf)
-    dipole_mag = np.linalg.norm(dipole)
-    print(f"双極子モーメント: {dipole_mag:.4f} Debye")
-    print(f"  成分 (x,y,z): [{dipole[0]:.3f}, {dipole[1]:.3f}, {dipole[2]:.3f}]")
+    try:
+        dipole = calculate_dipole(mf)
+        dipole_mag = np.linalg.norm(dipole)
+        print(f"双極子モーメント: {dipole_mag:.4f} Debye")
+        print(f"  成分 (x,y,z): [{dipole[0]:.3f}, {dipole[1]:.3f}, {dipole[2]:.3f}]")
+    except Exception as e:
+        print(f"双極子モーメント計算エラー: {e}")
+        dipole_mag = 0.0
     
     # 結果サマリー
     print("\n" + "=" * 60)
