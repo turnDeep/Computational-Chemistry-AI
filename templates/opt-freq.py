@@ -226,16 +226,36 @@ def main():
         pbar.set_description("[4/5] 振動数解析実行中")
         from pyscf import hessian
         
-        # Hessian計算（CPUで実行）
-        print("   Hessian calculation (CPU)...")
-        # GPUオブジェクトをCPUに変換
-        if hasattr(mf_opt, 'to_cpu'):
-            mf_cpu = mf_opt.to_cpu()
+        # Hessian計算
+        if args.use_gpu and GPU4PYSCF_AVAILABLE:
+            try:
+                from gpu4pyscf import hessian as gpu_hessian
+                print("   Hessian calculation (GPU)...")
+                h = gpu_hessian.rks.Hessian(mf_opt)
+                hess = h.kernel()
+                # 後の解析のためにCPUへ転送（必要な場合）
+                if hasattr(hess, 'get'):
+                    hess = hess.get()
+            except Exception as e:
+                print(f"⚠️ GPU Hessian failed: {e}")
+                print("   Falling back to CPU Hessian...")
+                # GPUオブジェクトをCPUに変換
+                if hasattr(mf_opt, 'to_cpu'):
+                    mf_cpu = mf_opt.to_cpu()
+                else:
+                    mf_cpu = mf_opt
+                h = hessian.rks.Hessian(mf_cpu)
+                hess = h.kernel()
         else:
-            mf_cpu = mf_opt
+            print("   Hessian calculation (CPU)...")
+            # GPUオブジェクトをCPUに変換
+            if hasattr(mf_opt, 'to_cpu'):
+                mf_cpu = mf_opt.to_cpu()
+            else:
+                mf_cpu = mf_opt
+            h = hessian.rks.Hessian(mf_cpu)
+            hess = h.kernel()
 
-        h = hessian.rks.Hessian(mf_cpu)
-        hess = h.kernel()
         freq_info = thermo.harmonic_analysis(mol_opt, hess)
         frequencies = freq_info['freq_wavenumber']
         n_imaginary = np.sum(frequencies < 0)
