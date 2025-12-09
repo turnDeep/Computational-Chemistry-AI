@@ -185,10 +185,6 @@ def main():
         raise ValueError(f"Invalid SMILES: {args.smiles}")
     formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
 
-    # 標準出力をログファイルにも出力するように設定
-    log_filename = f"{formula}.log"
-    sys.stdout = Logger(log_filename)
-
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
     print(f"ログファイル: {log_filename}")
