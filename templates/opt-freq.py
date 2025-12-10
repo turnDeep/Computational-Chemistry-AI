@@ -19,20 +19,25 @@ import warnings
 import sys
 import os
 
-# ログ出力用クラス
-class Logger(object):
-    def __init__(self, filename):
-        self.terminal = sys.stdout
-        self.log = open(filename, "w")
+# ログ出力用クラス（複数のストリームに出力）
+class MultiWriter(object):
+    def __init__(self, streams):
+        self.streams = streams
 
     def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-        self.log.flush()
+        for stream in self.streams:
+            stream.write(message)
+            try:
+                stream.flush()
+            except:
+                pass
 
     def flush(self):
-        self.terminal.flush()
-        self.log.flush()
+        for stream in self.streams:
+            try:
+                stream.flush()
+            except:
+                pass
 
 # GPU利用可能性チェック
 GPU4PYSCF_AVAILABLE = False
@@ -71,7 +76,7 @@ def smiles_to_xyz(smiles):
     
     return atoms, np.array(coords)
 
-def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0):
+def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0, output_stream=None):
     """PySCF分子オブジェクトを作成"""
     atom_str = ""
     for atom, coord in zip(atoms, coords):
@@ -84,6 +89,12 @@ def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0):
     mol.spin = spin
     mol.unit = 'Angstrom'
     mol.verbose = 4  # デバッグ用に詳細ログを出力
+
+    # PySCFの出力ストリームを設定（ファイル名ではなくストリームオブジェクトを使用）
+    if output_stream is not None:
+        mol.output = None  # Noneにすることでstdout属性が使われる
+        mol.stdout = output_stream
+
     mol.build()
     
     return mol
@@ -179,66 +190,93 @@ def main():
     print("="*60)
     print("構造最適化と振動数計算")
     print("="*60)
-    # 分子式を先に取得してログファイル名を決定
+
+    # 分子式を先に取得
     mol_rdkit = Chem.MolFromSmiles(args.smiles)
     if mol_rdkit is None:
         raise ValueError(f"Invalid SMILES: {args.smiles}")
     formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
     
-    # 標準出力をログファイルにも出力するように設定
-    log_filename = f"{formula}.log"
-    sys.stdout = Logger(log_filename)
+    # ログファイルの設定
+    # short_report.txt: Pythonプリント文のみ (要約)
+    # log_report.txt: すべての計算過程 (Terminal出力 + Pythonプリント文)
+
+    short_log_name = "short_report.txt"
+    full_log_name = "log_report.txt"
+
+    f_short = open(short_log_name, "w")
+    f_full = open(full_log_name, "w")
+
+    # sys.stdoutを置き換え: Terminal + Short + Full
+    # これにより print() 文は全て3箇所に出力される
+    original_stdout = sys.stdout
+    sys.stdout = MultiWriter([original_stdout, f_short, f_full])
+
+    # PySCFの出力先設定: Terminal + Full (Shortには出さない)
+    pyscf_writer = MultiWriter([original_stdout, f_full])
     
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
-    print(f"ログファイル: {log_filename}")
+    print(f"要約ログ: {short_log_name}")
+    print(f"詳細ログ: {full_log_name}")
     
-    with tqdm(total=5, desc="Overall Progress", file=sys.stdout.terminal) as pbar:
-        pbar.set_description("[1/5] 初期3D構造生成")
-        atoms, init_coords = smiles_to_xyz(args.smiles)
-        print(f"分子式: {formula}, 原子数: {len(atoms)}")
-        pbar.update(1)
+    try:
+        with tqdm(total=5, desc="Overall Progress", file=original_stdout) as pbar:
+            pbar.set_description("[1/5] 初期3D構造生成")
+            atoms, init_coords = smiles_to_xyz(args.smiles)
+            print(f"分子式: {formula}, 原子数: {len(atoms)}")
+            pbar.update(1)
 
-        pbar.set_description("[2/5] PySCF分子オブジェクト作成")
-        mol = create_mol(atoms, init_coords, args.basis, args.charge, args.spin)
-        print(f"電子数: {mol.nelectron}, 基底関数数: {mol.nao}")
-        pbar.update(1)
+            pbar.set_description("[2/5] PySCF分子オブジェクト作成")
+            # PySCFの詳細ログは pyscf_writer に出力
+            mol = create_mol(atoms, init_coords, args.basis, args.charge, args.spin, output_stream=pyscf_writer)
+            print(f"電子数: {mol.nelectron}, 基底関数数: {mol.nao}")
+            pbar.update(1)
 
-        pbar.set_description("[3/5] 構造最適化実行中")
-        # 初期エネルギー計算（安全なGPU計算）
-        mf, e_init = safe_gpu_calculation(mol, args.use_gpu)
-        print(f"初期エネルギー: {e_init:.6f} Hartree")
-        
-        # 構造最適化（CPUで実行 - geomeTRICはGPU未対応のため）
-        print("   Structure optimization (CPU)...")
-        mol_opt = optimize(mf, maxsteps=50)
-        
-        # 最適化後の計算
-        mf_opt, e_opt = safe_gpu_calculation(mol_opt, args.use_gpu)
-        print(f"最適化エネルギー: {e_opt:.6f} Hartree")
-        print(f"エネルギー変化: {(e_opt - e_init)*627.509:.4f} kcal/mol")
-        
-        opt_coords = mol_opt.atom_coords() * 0.529177
-        rmsd = np.sqrt(np.mean(np.sum((init_coords - opt_coords)**2, axis=1)))
-        print(f"構造変化RMSD: {rmsd:.4f} Å")
-        pbar.update(1)
+            pbar.set_description("[3/5] 構造最適化実行中")
+            # 初期エネルギー計算（安全なGPU計算）
+            mf, e_init = safe_gpu_calculation(mol, args.use_gpu)
+            print(f"初期エネルギー: {e_init:.6f} Hartree")
 
-        pbar.set_description("[4/5] 振動数解析実行中")
-        from pyscf import hessian
-        
-        # Hessian計算
-        if args.use_gpu and GPU4PYSCF_AVAILABLE:
-            try:
-                from gpu4pyscf import hessian as gpu_hessian
-                print("   Hessian calculation (GPU)...")
-                h = gpu_hessian.rks.Hessian(mf_opt)
-                hess = h.kernel()
-                # 後の解析のためにCPUへ転送（必要な場合）
-                if hasattr(hess, 'get'):
-                    hess = hess.get()
-            except Exception as e:
-                print(f"⚠️ GPU Hessian failed: {e}")
-                print("   Falling back to CPU Hessian...")
+            # 構造最適化（CPUで実行 - geomeTRICはGPU未対応のため）
+            print("   Structure optimization (CPU)...")
+            mol_opt = optimize(mf, maxsteps=50)
+
+            # 最適化後の計算
+            mf_opt, e_opt = safe_gpu_calculation(mol_opt, args.use_gpu)
+            print(f"最適化エネルギー: {e_opt:.6f} Hartree")
+            print(f"エネルギー変化: {(e_opt - e_init)*627.509:.4f} kcal/mol")
+
+            opt_coords = mol_opt.atom_coords() * 0.529177
+            rmsd = np.sqrt(np.mean(np.sum((init_coords - opt_coords)**2, axis=1)))
+            print(f"構造変化RMSD: {rmsd:.4f} Å")
+            pbar.update(1)
+
+            pbar.set_description("[4/5] 振動数解析実行中")
+            from pyscf import hessian
+
+            # Hessian計算
+            if args.use_gpu and GPU4PYSCF_AVAILABLE:
+                try:
+                    from gpu4pyscf import hessian as gpu_hessian
+                    print("   Hessian calculation (GPU)...")
+                    h = gpu_hessian.rks.Hessian(mf_opt)
+                    hess = h.kernel()
+                    # 後の解析のためにCPUへ転送（必要な場合）
+                    if hasattr(hess, 'get'):
+                        hess = hess.get()
+                except Exception as e:
+                    print(f"⚠️ GPU Hessian failed: {e}")
+                    print("   Falling back to CPU Hessian...")
+                    # GPUオブジェクトをCPUに変換
+                    if hasattr(mf_opt, 'to_cpu'):
+                        mf_cpu = mf_opt.to_cpu()
+                    else:
+                        mf_cpu = mf_opt
+                    h = hessian.rks.Hessian(mf_cpu)
+                    hess = h.kernel()
+            else:
+                print("   Hessian calculation (CPU)...")
                 # GPUオブジェクトをCPUに変換
                 if hasattr(mf_opt, 'to_cpu'):
                     mf_cpu = mf_opt.to_cpu()
@@ -246,79 +284,60 @@ def main():
                     mf_cpu = mf_opt
                 h = hessian.rks.Hessian(mf_cpu)
                 hess = h.kernel()
-        else:
-            print("   Hessian calculation (CPU)...")
-            # GPUオブジェクトをCPUに変換
-            if hasattr(mf_opt, 'to_cpu'):
-                mf_cpu = mf_opt.to_cpu()
+
+            freq_info = thermo.harmonic_analysis(mol_opt, hess)
+            frequencies = freq_info['freq_wavenumber']
+            n_imaginary = np.sum(frequencies < 0)
+            print(f"虚振動数: {n_imaginary}個")
+            if n_imaginary == 0:
+                print("✅ 安定構造（極小点）")
             else:
-                mf_cpu = mf_opt
-            h = hessian.rks.Hessian(mf_cpu)
-            hess = h.kernel()
+                print("⚠️ 遷移状態または鞍点")
+            real_freq = frequencies[frequencies >= 0]
+            if len(real_freq) > 0:
+                print(f"最低振動数: {real_freq[0]:.2f} cm⁻¹")
+                print(f"最高振動数: {real_freq[-1]:.2f} cm⁻¹")
+            pbar.update(1)
 
-        freq_info = thermo.harmonic_analysis(mol_opt, hess)
-        frequencies = freq_info['freq_wavenumber']
-        n_imaginary = np.sum(frequencies < 0)
-        print(f"虚振動数: {n_imaginary}個")
-        if n_imaginary == 0:
-            print("✅ 安定構造（極小点）")
-        else:
-            print("⚠️ 遷移状態または鞍点")
-        real_freq = frequencies[frequencies >= 0]
-        if len(real_freq) > 0:
-            print(f"最低振動数: {real_freq[0]:.2f} cm⁻¹")
-            print(f"最高振動数: {real_freq[-1]:.2f} cm⁻¹")
-        pbar.update(1)
+            pbar.set_description("[5/5] 熱力学的性質の計算")
+            # thermo.thermo()は辞書を返し、その値は貢献成分のリスト [合計, 電子, 並進, 回転, 振動]
+            thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325)
 
-        pbar.set_description("[5/5] 熱力学的性質の計算")
-        # thermo.thermo()は辞書を返し、その値は貢献成分のリスト [合計, 電子, 並進, 回転, 振動]
-        thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325)
+            # 辞書のキーで値(リスト)を取得し、その先頭要素(合計値)を取り出す
+            zpe = thermo_results['ZPE'][0]
+            e_tot = thermo_results['E_tot'][0]
+            h_tot = thermo_results['H_tot'][0]
+            g_tot = thermo_results['G_tot'][0]
+            s_tot = thermo_results['S_tot'][0]
+
+            print(f"ゼロ点エネルギー: {zpe*627.509:.3f} kcal/mol")
+            print(f"エンタルピー: {h_tot:.6f} Hartree")
+            print(f"ギブズ自由エネルギー: {g_tot:.6f} Hartree")
+            print(f"エントロピー: {s_tot*1000:.2f} cal/(mol·K)")
+            pbar.update(1)
         
-        # 辞書のキーで値(リスト)を取得し、その先頭要素(合計値)を取り出す
-        zpe = thermo_results['ZPE'][0]
-        e_tot = thermo_results['E_tot'][0]
-        h_tot = thermo_results['H_tot'][0]
-        g_tot = thermo_results['G_tot'][0]
-        s_tot = thermo_results['S_tot'][0]
+        # XYZファイル保存
+        with open(f"{formula}_optimized.xyz", 'w') as f:
+            f.write(f"{len(atoms)}\n")
+            f.write(f"Optimized structure E={e_opt:.6f} Hartree\n")
+            for atom, coord in zip(atoms, opt_coords):
+                f.write(f"{atom:2s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
         
-        print(f"ゼロ点エネルギー: {zpe*627.509:.3f} kcal/mol")
-        print(f"エンタルピー: {h_tot:.6f} Hartree")
-        print(f"ギブズ自由エネルギー: {g_tot:.6f} Hartree")
-        print(f"エントロピー: {s_tot*1000:.2f} cal/(mol·K)")
-        pbar.update(1)
-    
-    # XYZファイル保存
-    with open(f"{formula}_optimized.xyz", 'w') as f:
-        f.write(f"{len(atoms)}\n")
-        f.write(f"Optimized structure E={e_opt:.6f} Hartree\n")
-        for atom, coord in zip(atoms, opt_coords):
-            f.write(f"{atom:2s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
-    
-    print(f"\n最適化構造を {formula}_optimized.xyz に保存")
-    
-    # サマリー保存
-    with open(f"{formula}_summary.txt", 'w') as f:
-        f.write(f"SMILES: {args.smiles}\n")
-        f.write(f"Formula: {formula}\n")
-        f.write(f"Method: B3LYP/{args.basis}\n")
-        f.write(f"Initial Energy: {e_init:.6f} Hartree\n")
-        f.write(f"Optimized Energy: {e_opt:.6f} Hartree\n")
-        f.write(f"Energy Change: {(e_opt - e_init)*627.509:.4f} kcal/mol\n")
-        f.write(f"RMSD: {rmsd:.4f} Å\n")
-        f.write(f"Imaginary Frequencies: {n_imaginary}\n")
-        f.write(f"ZPE: {zpe*627.509:.3f} kcal/mol\n")
-        f.write(f"Gibbs Energy (298K): {g_tot:.6f} Hartree\n")
-    
-    print(f"サマリーを {formula}_summary.txt に保存")
-    print(f"比較図を {formula}_comparison.png に保存")
-    
-    print("\n" + "="*60)
-    print("計算完了！")
-    print("="*60)
-    
-    end_time = time.time()
-    duration = end_time - start_time
-    print(f"実行時間: {duration:.2f}秒")
+        print(f"\n最適化構造を {formula}_optimized.xyz に保存")
+        print(f"比較図を {formula}_comparison.png に保存 (未実装)")
+
+        print("\n" + "="*60)
+        print("計算完了！")
+        print("="*60)
+
+        end_time = time.time()
+        duration = end_time - start_time
+        print(f"実行時間: {duration:.2f}秒")
+
+    finally:
+        f_short.close()
+        f_full.close()
+        sys.stdout = original_stdout
 
 if __name__ == "__main__":
     main()
