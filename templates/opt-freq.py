@@ -63,9 +63,54 @@ def smiles_to_xyz(smiles):
         raise ValueError(f"Invalid SMILES: {smiles}")
     
     mol = Chem.AddHs(mol)
-    AllChem.EmbedMolecule(mol, randomSeed=42)
-    AllChem.MMFFOptimizeMolecule(mol, maxIters=200)
     
+    # 3D座標生成の試行
+    # 1. 標準的なEmbed
+    res = AllChem.EmbedMolecule(mol, randomSeed=42)
+
+    # 2. 失敗した場合、または原子が重なっている可能性がある場合はランダム座標を使用
+    if res == -1:
+        print("⚠️ Standard embedding failed. Retrying with random coordinates...")
+        res = AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=42)
+        if res == -1:
+             # ETKDGv2を試す
+             try:
+                 params = AllChem.ETKDGv2()
+                 res = AllChem.EmbedMolecule(mol, params)
+             except:
+                 pass
+
+             if res == -1:
+                 raise ValueError("Failed to generate 3D coordinates")
+
+    # 3. 座標の重なりチェック（原子間距離が極端に短い場合）
+    # RDKitのEmbedが成功しても、分離したフラグメントが重なることがある
+    try:
+        AllChem.MMFFOptimizeMolecule(mol, maxIters=200)
+    except:
+        pass
+
+    conf = mol.GetConformer()
+    coords = conf.GetPositions()
+
+    # 重なりチェック: 距離行列を計算
+    n_atoms = len(coords)
+    min_dist = 100.0
+    for i in range(n_atoms):
+        for j in range(i + 1, n_atoms):
+            d = np.linalg.norm(coords[i] - coords[j])
+            if d < min_dist:
+                min_dist = d
+
+    # 閾値 0.5A 未満の原子ペアがある場合、座標生成失敗とみなしてランダム座標で再試行
+    if min_dist < 0.5:
+        print(f"⚠️ Detected overlapping atoms (min dist: {min_dist:.4f} Å). Retrying with random coordinates...")
+        res = AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=42)
+        try:
+            AllChem.MMFFOptimizeMolecule(mol, maxIters=200)
+        except:
+            pass
+
     conf = mol.GetConformer()
     atoms = []
     coords = []
