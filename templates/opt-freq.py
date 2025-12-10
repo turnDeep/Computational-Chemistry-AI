@@ -20,19 +20,29 @@ import sys
 import os
 
 # ログ出力用クラス
-class Logger(object):
-    def __init__(self, filename):
-        self.terminal = sys.stdout
-        self.log = open(filename, "w")
+class MultiStream(object):
+    """複数のストリームに出力を分岐させるクラス"""
+    def __init__(self, streams):
+        self.streams = streams
 
     def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-        self.log.flush()
+        for stream in self.streams:
+            try:
+                stream.write(message)
+                stream.flush()
+            except Exception:
+                pass
 
     def flush(self):
-        self.terminal.flush()
-        self.log.flush()
+        for stream in self.streams:
+            try:
+                stream.flush()
+            except Exception:
+                pass
+
+    def close(self):
+        # sys.__stdout__などは閉じないように注意
+        pass
 
 # GPU利用可能性チェック
 GPU4PYSCF_AVAILABLE = False
@@ -71,7 +81,7 @@ def smiles_to_xyz(smiles):
     
     return atoms, np.array(coords)
 
-def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0):
+def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0, output=None):
     """PySCF分子オブジェクトを作成"""
     atom_str = ""
     for atom, coord in zip(atoms, coords):
@@ -84,6 +94,8 @@ def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0):
     mol.spin = spin
     mol.unit = 'Angstrom'
     mol.verbose = 4  # デバッグ用に詳細ログを出力
+    if output:
+        mol.stdout = output
     mol.build()
     
     return mol
@@ -185,22 +197,36 @@ def main():
         raise ValueError(f"Invalid SMILES: {args.smiles}")
     formula = Chem.rdMolDescriptors.CalcMolFormula(mol_rdkit)
     
-    # 標準出力をログファイルにも出力するように設定
-    log_filename = f"{formula}.log"
-    sys.stdout = Logger(log_filename)
+    # ログファイル設定
+    short_report_name = f"{formula}_short_report.txt"
+    log_report_name = f"{formula}_log_report.txt"
+
+    f_short = open(short_report_name, "w")
+    f_log = open(log_report_name, "w")
+
+    # 標準出力の置き換え（print文の出力先）
+    # Terminal, Short Report, Log Reportすべてに出力
+    sys.stdout = MultiStream([sys.__stdout__, f_short, f_log])
+
+    # PySCF詳細ログの出力先
+    # Terminal, Log Reportに出力（Short Reportには出さない）
+    pyscf_log_stream = MultiStream([sys.__stdout__, f_log])
     
     print(f"SMILES: {args.smiles}")
     print(f"Method: B3LYP/{args.basis}")
-    print(f"ログファイル: {log_filename}")
+    print(f"レポートファイル: {short_report_name}")
+    print(f"詳細ログファイル: {log_report_name}")
     
-    with tqdm(total=5, desc="Overall Progress", file=sys.stdout.terminal) as pbar:
+    # tqdmは直接ターミナルに出力する（ログファイルにはプログレスバーを出さない）
+    with tqdm(total=5, desc="Overall Progress", file=sys.__stdout__) as pbar:
         pbar.set_description("[1/5] 初期3D構造生成")
         atoms, init_coords = smiles_to_xyz(args.smiles)
         print(f"分子式: {formula}, 原子数: {len(atoms)}")
         pbar.update(1)
 
         pbar.set_description("[2/5] PySCF分子オブジェクト作成")
-        mol = create_mol(atoms, init_coords, args.basis, args.charge, args.spin)
+        # create_molに詳細ログ用のストリームを渡す
+        mol = create_mol(atoms, init_coords, args.basis, args.charge, args.spin, output=pyscf_log_stream)
         print(f"電子数: {mol.nelectron}, 基底関数数: {mol.nao}")
         pbar.update(1)
 
@@ -296,21 +322,9 @@ def main():
     
     print(f"\n最適化構造を {formula}_optimized.xyz に保存")
     
-    # サマリー保存
-    with open(f"{formula}_summary.txt", 'w') as f:
-        f.write(f"SMILES: {args.smiles}\n")
-        f.write(f"Formula: {formula}\n")
-        f.write(f"Method: B3LYP/{args.basis}\n")
-        f.write(f"Initial Energy: {e_init:.6f} Hartree\n")
-        f.write(f"Optimized Energy: {e_opt:.6f} Hartree\n")
-        f.write(f"Energy Change: {(e_opt - e_init)*627.509:.4f} kcal/mol\n")
-        f.write(f"RMSD: {rmsd:.4f} Å\n")
-        f.write(f"Imaginary Frequencies: {n_imaginary}\n")
-        f.write(f"ZPE: {zpe*627.509:.3f} kcal/mol\n")
-        f.write(f"Gibbs Energy (298K): {g_tot:.6f} Hartree\n")
-    
-    print(f"サマリーを {formula}_summary.txt に保存")
-    print(f"比較図を {formula}_comparison.png に保存")
+    # NOTE: summary.txtの生成コードは削除し、short_report.txtに集約
+    print(f"サマリーレポートを {short_report_name} に保存")
+    print(f"比較図を {formula}_comparison.png に保存 (※作成ロジックが必要であれば追加)")
     
     print("\n" + "="*60)
     print("計算完了！")
@@ -319,6 +333,10 @@ def main():
     end_time = time.time()
     duration = end_time - start_time
     print(f"実行時間: {duration:.2f}秒")
+
+    # ファイルを閉じる
+    f_short.close()
+    f_log.close()
 
 if __name__ == "__main__":
     main()
