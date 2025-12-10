@@ -17,6 +17,7 @@ import warnings
 import sys
 import os
 import time
+import re
 
 # ログ出力用クラス（複数のストリームに出力）
 class MultiWriter(object):
@@ -272,9 +273,14 @@ def main():
     
     args = parser.parse_args()
     
+    # ファイル名用のSMILESサニタイズ
+    safe_smiles = re.sub(r'[\\/:\*\?"<>\|]', '_', args.smiles)
+    
     # ログファイルの設定
-    short_log_name = "short_report.txt"
-    full_log_name = "log_report.txt"
+    # 命名規則: {SMILES}_{script}_{method}_{basis}_{type}.txt
+    base_name = f"{safe_smiles}_calculate_energy_{args.method}_{args.basis}"
+    short_log_name = f"{base_name}_short_report.txt"
+    full_log_name = f"{base_name}_log_report.txt"
 
     f_short = open(short_log_name, "w")
     f_full = open(full_log_name, "w")
