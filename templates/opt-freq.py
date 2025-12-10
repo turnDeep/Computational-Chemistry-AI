@@ -96,7 +96,18 @@ def create_mol(atoms, coords, basis='6-31+G**', charge=0, spin=0, output_stream=
         mol.output = None  # Noneにすることでstdout属性が使われる
         mol.stdout = output_stream
 
-    mol.build()
+    try:
+        mol.build()
+    except Exception as e:
+        # BasisNotFoundError (pyscf.lib.exceptions.BasisNotFoundError) などを捕捉
+        if "Basis not found" in str(e) or "Basis data not found" in str(e):
+            print(f"\n⚠️ Basis set '{basis}' not found for some atoms.")
+            print("   Attempting fallback to 'def2-SVP' (supports most elements)...")
+            mol.basis = 'def2-SVP'
+            mol.build()
+            print("   ✅ Fallback successful using 'def2-SVP'")
+        else:
+            raise e
     
     return mol
 
