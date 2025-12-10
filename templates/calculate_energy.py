@@ -136,8 +136,8 @@ def perform_calculation(mol, method='HF', use_gpu=False):
                 print("   Step 2: MP2 calculation (GPU)...")
                 from gpu4pyscf import mp
                 mp2 = mp.MP2(mf_hf)
-                energy = mp2.kernel()
-                return mf_hf, energy
+                mp2.kernel()
+                return mf_hf, mp2.e_tot
 
             # HF/DFTの場合
             else:
@@ -192,8 +192,8 @@ def perform_calculation(mol, method='HF', use_gpu=False):
         print("   Step 2: MP2 calculation (CPU)...")
         from pyscf import mp
         mp2 = mp.MP2(mf)
-        energy = mp2.kernel()
-        return mf, energy
+        mp2.kernel()
+        return mf, mp2.e_tot
 
     elif method == 'HF':
         mf = scf.RHF(mol)
