@@ -231,9 +231,14 @@ def numerical_ir_intensities(mol, mf, modes):
             mol_plus = mol.copy()
             mol_plus.set_geom_(coords_plus, unit='Bohr')
             # 密度行列を初期値にして計算高速化
-            if isinstance(mf, (dft.rks.RKS, dft.uks.UKS)):
+            if isinstance(mf, dft.uks.UKS):
+                mf_plus = dft.UKS(mol_plus)
+                mf_plus.xc = mf.xc
+            elif isinstance(mf, dft.rks.RKS):
                 mf_plus = dft.RKS(mol_plus)
                 mf_plus.xc = mf.xc
+            elif isinstance(mf, scf.uhf.UHF):
+                mf_plus = scf.UHF(mol_plus)
             else:
                 mf_plus = scf.RHF(mol_plus)
 
@@ -248,9 +253,14 @@ def numerical_ir_intensities(mol, mf, modes):
             mol_minus = mol.copy()
             mol_minus.set_geom_(coords_minus, unit='Bohr')
 
-            if isinstance(mf, (dft.rks.RKS, dft.uks.UKS)):
+            if isinstance(mf, dft.uks.UKS):
+                mf_minus = dft.UKS(mol_minus)
+                mf_minus.xc = mf.xc
+            elif isinstance(mf, dft.rks.RKS):
                 mf_minus = dft.RKS(mol_minus)
                 mf_minus.xc = mf.xc
+            elif isinstance(mf, scf.uhf.UHF):
+                mf_minus = scf.UHF(mol_minus)
             else:
                 mf_minus = scf.RHF(mol_minus)
 
@@ -299,6 +309,75 @@ def numerical_ir_intensities(mol, mf, modes):
         intensities.append(intens)
 
     return np.array(intensities)
+
+def plot_ir_spectrum(frequencies, intensities, formula, save_file):
+    """
+    IRスペクトルをプロットして保存する
+
+    Args:
+        frequencies (array): 振動数 (cm^-1)
+        intensities (array): IR強度 (km/mol)
+        formula (str): 分子式
+        save_file (str): 保存ファイルパス
+    """
+    # ガウシアンブロードニングの設定
+    # x軸: 4000 cm^-1 (左) -> 400 cm^-1 (右)
+    x = np.linspace(400, 4000, 2000)
+    y = np.zeros_like(x)
+    sigma = 20.0  # 半値幅パラメータ (cm^-1)
+
+    # スペクトル生成 (強度の重ね合わせ)
+    for freq, intensity in zip(frequencies, intensities):
+        if freq > 0 and intensity > 0.1:  # 正の振動数かつ一定強度以上
+            # ガウス関数: I * exp(-0.5 * ((x-freq)/sigma)^2)
+            gaussian = intensity * np.exp(-0.5 * ((x - freq) / sigma) ** 2)
+            y += gaussian
+
+    # プロット作成
+    plt.figure(figsize=(10, 6))
+
+    # 透過率(Transmittance)風に表示 (最大強度を100%吸収として、100% - Absorbance)
+    # 実際の透過率は濃度や光路長に依存するため、ここでは定性的な「吸収の逆」としてプロット
+    if np.max(y) > 0:
+        # 正規化して透過率(%)に変換 (100% -> 0% の範囲に収める)
+        # y_norm = y / np.max(y) * 80 # 最大吸収を80%とする
+        # transmittance = 100 - y_norm
+
+        # 吸光度(Absorbance)としてプロットする方が物理的には正確だが、化学者は透過率スペクトルに見慣れている
+        # ここでは単純に強度(Absorbance)をプロットし、y軸を反転させる手法をとる（透過率風に見える）
+        plt.plot(x, y, color='blue', linewidth=1.5)
+        plt.fill_between(x, y, color='blue', alpha=0.1)
+        plt.ylabel('Simulated Absorption Intensity (arb. units)')
+    else:
+        plt.plot(x, y, color='blue')
+        plt.ylabel('Intensity')
+
+    plt.title(f'IR Spectrum: {formula}')
+    plt.xlabel('Wavenumber (cm⁻¹)')
+    plt.xlim(4000, 400)  # IRスペクトルの慣例に従い、高波数(左) -> 低波数(右)
+    plt.grid(True, linestyle='--', alpha=0.7)
+
+    # 主要ピークにラベル付け
+    peak_indices = []
+    # 簡易的なピーク検出（元のデータを使用）
+    for i, (freq, intens) in enumerate(zip(frequencies, intensities)):
+        if freq > 400 and freq < 4000 and intens > np.max(intensities) * 0.1:
+             peak_indices.append(i)
+
+    # 強度順にソートして上位5つを表示
+    peak_indices.sort(key=lambda i: intensities[i], reverse=True)
+    for i in peak_indices[:5]:
+        freq = frequencies[i]
+        intens = intensities[i]
+        # ガウシアン上の高さを計算
+        h = intens  # 近似的にその高さ
+        plt.annotate(f'{freq:.0f}', xy=(freq, h), xytext=(freq, h + np.max(intensities)*0.05),
+                     ha='center', fontsize=9, arrowprops=dict(arrowstyle='->', color='black', linewidth=0.5))
+
+    plt.tight_layout()
+    plt.savefig(save_file, dpi=300)
+    plt.close()
+    print(f"IRスペクトル画像を保存: {save_file}")
 
 def main():
     # グローバル変数の状態をローカルにコピー
@@ -469,6 +548,13 @@ def main():
                 f.write("Frequency(cm-1),Intensity(km/mol)\n")
                 for freq, intens in zip(frequencies, ir_intensities):
                     f.write(f"{freq:.4f},{intens:.4f}\n")
+
+            # IRスペクトル画像の保存 (PNG)
+            ir_png_name = f"{base_name}_ir.png"
+            try:
+                plot_ir_spectrum(frequencies, ir_intensities, formula, ir_png_name)
+            except Exception as e:
+                print(f"⚠️ Failed to plot IR spectrum: {e}")
 
             # ログ出力用テーブル作成
             print("\n   IR Spectrum Summary:")
