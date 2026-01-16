@@ -391,6 +391,8 @@ def main():
     parser.add_argument('--charge', type=int, default=0, help='電荷')
     parser.add_argument('--spin', type=int, default=0, help='スピン多重度-1')
     parser.add_argument('--use-gpu', action='store_true', help='GPU加速を使用')
+    parser.add_argument('--temperature', type=float, default=298.15, help='温度 (K)')
+    parser.add_argument('--pressure', type=float, default=101325, help='圧力 (Pa)')
     args = parser.parse_args()
     
     print("="*60)
@@ -581,8 +583,9 @@ def main():
             pbar.update(1)
 
             pbar.set_description("[5/5] 熱力学的性質の計算")
+            print(f"   Temperature: {args.temperature} K, Pressure: {args.pressure} Pa")
             # thermo.thermo()は辞書を返し、その値は貢献成分のリスト [合計, 電子, 並進, 回転, 振動]
-            thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], 298.15, 101325)
+            thermo_results = thermo.thermo(mf_opt, freq_info['freq_au'], args.temperature, args.pressure)
 
             # 辞書のキーで値(リスト)を取得し、その先頭要素(合計値)を取り出す
             zpe = thermo_results['ZPE'][0]
