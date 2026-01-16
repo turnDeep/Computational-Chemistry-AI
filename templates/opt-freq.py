@@ -13,6 +13,12 @@ from rdkit.Chem import AllChem
 from pyscf import gto, dft, scf
 from pyscf.geomopt.geometric_solver import optimize
 from pyscf.hessian import thermo
+try:
+    from pyscf.prop import infrared
+    HAS_INFRARED = True
+except ImportError:
+    HAS_INFRARED = False
+
 from tqdm import tqdm
 import time
 import warnings
@@ -177,7 +183,127 @@ def safe_gpu_calculation(mol, use_gpu=False):
     energy = mf.kernel()
     return mf, energy
 
+def numerical_ir_intensities(mol, mf, modes):
+    """
+    数値微分によるIR強度計算 (pyscf.prop.infraredがない場合の代替)
+
+    Args:
+        mol: PySCF Mole object
+        mf: PySCF SCF object (converged)
+        modes: Normal modes (n_modes, n_atoms, 3)
+    Returns:
+        intensities: IR intensities in km/mol
+    """
+    print("   ⚠️ pyscf.prop.infrared not found. Using numerical differentiation for IR intensities.")
+    print("      This involves 6N SCF calculations and may be slow.")
+
+    n_atom = mol.natm
+
+    # 基準の双極子モーメント
+    mu0 = mf.dip_moment(unit='au') # (3,)
+
+    # 双極子微分の計算 (dmu/dx) -> (3, 3*natm)
+    # mu_x, mu_y, mu_z for each coordinate displacement
+    dip_grad = np.zeros((3, n_atom, 3)) # (dipole_comp, atom, coord)
+
+    delta = 0.001 # Displacement size in Bohr
+
+    # 現在の座標 (Angstrom)
+    coords_orig = mol.atom_coords(unit='Bohr')
+
+    # リスタート用に密度行列を保存
+    dm0 = mf.make_rdm1()
+
+    # 各原子・各座標についてループ
+    cnt = 0
+    total_steps = n_atom * 3
+
+    print(f"   Calculating dipole derivatives ({total_steps} steps)...")
+
+    # tqdmを使いたいが、MultiWriterと競合する可能性があるのでシンプルなprintで
+
+    for i in range(n_atom):
+        for j in range(3): # x, y, z
+            # +変位
+            coords_plus = coords_orig.copy()
+            coords_plus[i, j] += delta
+
+            mol_plus = mol.copy()
+            mol_plus.set_geom_(coords_plus, unit='Bohr')
+            # 密度行列を初期値にして計算高速化
+            if isinstance(mf, (dft.rks.RKS, dft.uks.UKS)):
+                mf_plus = dft.RKS(mol_plus)
+                mf_plus.xc = mf.xc
+            else:
+                mf_plus = scf.RHF(mol_plus)
+
+            mf_plus.verbose = 0
+            mf_plus.kernel(dm0=dm0)
+            mu_plus = mf_plus.dip_moment(unit='au')
+
+            # -変位
+            coords_minus = coords_orig.copy()
+            coords_minus[i, j] -= delta
+
+            mol_minus = mol.copy()
+            mol_minus.set_geom_(coords_minus, unit='Bohr')
+
+            if isinstance(mf, (dft.rks.RKS, dft.uks.UKS)):
+                mf_minus = dft.RKS(mol_minus)
+                mf_minus.xc = mf.xc
+            else:
+                mf_minus = scf.RHF(mol_minus)
+
+            mf_minus.verbose = 0
+            mf_minus.kernel(dm0=dm0)
+            mu_minus = mf_minus.dip_moment(unit='au')
+
+            # 中心差分 (dmu / dR)
+            deriv = (mu_plus - mu_minus) / (2.0 * delta)
+            dip_grad[:, i, j] = deriv
+
+            cnt += 1
+            if cnt % 10 == 0:
+                print(f"      Step {cnt}/{total_steps}")
+
+    # 双極子微分行列を (3, 3N) に変形
+    # dipole_deriv: (3, 3N) where 3N are nuclear coordinates
+    dipole_deriv = dip_grad.reshape(3, -1) # (3, 3N)
+
+    # ノーマルモードを (3N, n_modes) に変形
+    # modes input is (n_modes, n_atoms, 3)
+    # pyscf returns modes in mass-weighted coordinates? No, usually normalized displacements.
+    # We need modes in shape (3N, n_modes)
+    n_modes = modes.shape[0]
+
+    # 振動モードごとの双極子変化 dmu/dQ = sum(dmu/dR * dR/dQ)
+    # dR/dQ is the normal mode vector
+
+    intensities = []
+
+    for m in range(n_modes):
+        mode_vec = modes[m].reshape(-1) # (3N,)
+
+        # dmu_dQ = dipole_deriv (3, 3N) . mode_vec (3N, 1)
+        dmu_dQ = np.dot(dipole_deriv, mode_vec) # (3,)
+
+        # Intensity formula: I = (N_A * pi / 3c^2) * |dmu/dQ|^2
+        # In km/mol units.
+        # PySCF uses: 42.2561 * |dmu/dQ|^2  (if dmu/dQ is in au) -> km/mol
+        # Check units:
+        # dipole in au (Debye * ..), coordinates in Bohr.
+        # factor ~ 42.2561
+
+        val = np.sum(dmu_dQ**2)
+        intens = val * 42.2561
+        intensities.append(intens)
+
+    return np.array(intensities)
+
 def main():
+    # グローバル変数の状態をローカルにコピー
+    has_infrared = HAS_INFRARED
+
     start_time = time.time()
     # コマンドライン引数の解析
     parser = argparse.ArgumentParser(description='構造最適化と振動数計算')
@@ -290,8 +416,72 @@ def main():
                 h = hessian.rks.Hessian(mf_cpu)
                 hess = h.kernel()
 
-            freq_info = thermo.harmonic_analysis(mol_opt, hess)
-            frequencies = freq_info['freq_wavenumber']
+            # Ensure we have a CPU MF object for IR calculation
+            if 'mf_cpu' not in locals():
+                if hasattr(mf_opt, 'to_cpu'):
+                    mf_cpu = mf_opt.to_cpu()
+                else:
+                    mf_cpu = mf_opt
+
+            # IRスペクトル計算（双極子微分の計算）
+            print("   Computing IR intensities...")
+
+            if has_infrared:
+                try:
+                    # IR計算オブジェクト作成
+                    if isinstance(mf_cpu, (dft.rks.RKS, dft.uks.UKS)):
+                        ir = infrared.RKS(mf_cpu)
+                    else:
+                        ir = infrared.RHF(mf_cpu)
+
+                    # 計算済みのHessianをセット（再計算防止）
+                    ir.hessian = hess
+
+                    # IR計算実行
+                    freq_info = ir.kernel()
+                    frequencies = freq_info['freq_wavenumber']
+
+                    # IR強度取得
+                    if hasattr(ir, 'ir_intensity'):
+                        ir_intensities = ir.ir_intensity
+                    else:
+                        ir_intensities = np.zeros_like(frequencies)
+                        print("⚠️ IR intensities could not be calculated by module.")
+                except Exception as e:
+                    print(f"⚠️ Error in IR module: {e}")
+                    has_infrared = False
+
+            if not has_infrared:
+                # Fallback: Numerical differentiation
+                # Use freq_info from existing thermo analysis if IR module failed
+                if 'freq_info' not in locals():
+                     freq_info = thermo.harmonic_analysis(mol_opt, hess)
+
+                frequencies = freq_info['freq_wavenumber']
+                modes = freq_info['norm_mode'] # (n_modes, n_atoms, 3)
+
+                ir_intensities = numerical_ir_intensities(mol_opt, mf_cpu, modes)
+
+            # IRスペクトルデータの保存 (CSV)
+            ir_csv_name = f"{base_name}_ir.csv"
+            print(f"IRスペクトルデータを保存: {ir_csv_name}")
+            with open(ir_csv_name, 'w') as f:
+                f.write("Frequency(cm-1),Intensity(km/mol)\n")
+                for freq, intens in zip(frequencies, ir_intensities):
+                    f.write(f"{freq:.4f},{intens:.4f}\n")
+
+            # ログ出力用テーブル作成
+            print("\n   IR Spectrum Summary:")
+            print(f"   {'Freq (cm⁻¹)':>12} {'Intensity (km/mol)':>20}")
+            print("   " + "-"*35)
+            # 強度が高い順または周波数順？通常は周波数順
+            for i in range(len(frequencies)):
+                # 虚振動や低強度を除外せず全て表示（または主要なもののみ）
+                # ここでは出力が長くなりすぎないように、強度が0より大きい実振動を表示
+                if frequencies[i] > 0 and ir_intensities[i] > 1.0:
+                    print(f"   {frequencies[i]:12.2f} {ir_intensities[i]:20.2f}")
+            print("   " + "-"*35 + "\n")
+
             n_imaginary = np.sum(frequencies < 0)
             print(f"虚振動数: {n_imaginary}個")
             if n_imaginary == 0:
